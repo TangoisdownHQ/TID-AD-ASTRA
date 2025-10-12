@@ -1,0 +1,118 @@
+{
+    "last_trained_dataset": "/home/tangoisdown/LOTL/TIDHQ.NETWORK/TIDHQ.NET-OUTPOSTS/TID-AD-ASTRA/ml/data/open_exoplanet_catalogue.csv",
+    "dataset_source": "fetched",
+    "dataset_shape": [
+        5329,
+        25
+    ],
+    "last_updated": "2025-10-12T08:25:07",
+    "last_model_path": "/home/tangoisdown/LOTL/TIDHQ.NETWORK/TIDHQ.NET-OUTPOSTS/TID-AD-ASTRA/ml/models/artifacts/model_c26997b5.joblib",
+    "last_model_metrics": {
+        "accuracy": 0.975609756097561,
+        "f1": 0.5562706023665067,
+        "precision": 0.6693316825162667,
+        "recall": 0.5367052626088771
+    },
+    "last_model_hash": "c26997b5",
+    "last_scheduler_run": "2025-10-12T08:24:15",
+    "last_scheduler_status": "failed",
+    "last_scheduler_error": "update_awareness_state() takes 0 positional arguments but 1 was given",
+    "last_fetch_source": "Open Exoplanet Catalogue",
+    "last_fetch_time": "2025-10-11T09:47:36.328323",
+    "last_successful_fetch": "2025-10-11T09:47:37.848127",
+    "fetched_files": [
+        "/home/tangoisdown/LOTL/TIDHQ.NETWORK/TIDHQ.NET-OUTPOSTS/TID-AD-ASTRA/ml/data/open_exoplanet_catalogue.csv"
+    ],
+    "label_mapping": {
+        "Confirmed planets": 0,
+        "Confirmed planets, Orphan planets": 1,
+        "Confirmed planets, Planets in binary systems, P-type": 2,
+        "Confirmed planets, Planets in binary systems, P-type, Planets in globular clusters": 3,
+        "Confirmed planets, Planets in binary systems, S-type": 4,
+        "Confirmed planets, Planets in open clusters": 5,
+        "Confirmed planets, Planets in open clusters, Planets in binary systems, S-type": 6,
+        "Controversial": 7,
+        "Controversial, Planets in binary systems, P-type": 8,
+        "Controversial, Planets in binary systems, S-type": 9,
+        "Controversial, Planets in open clusters": 10,
+        "Kepler Objects of Interest": 11,
+        "Planets in binary systems, S-type, Confirmed planets": 12,
+        "Retracted planet candidate": 13,
+        "Retracted planet candidate, Planets in binary systems, S-type": 14,
+        "Solar System": 15
+    },
+    "trained_label_classes": [
+        "Confirmed planets",
+        "Confirmed planets, Orphan planets",
+        "Confirmed planets, Planets in binary systems, P-type",
+        "Confirmed planets, Planets in binary systems, P-type, Planets in globular clusters",
+        "Confirmed planets, Planets in binary systems, S-type",
+        "Confirmed planets, Planets in open clusters",
+        "Confirmed planets, Planets in open clusters, Planets in binary systems, S-type",
+        "Controversial",
+        "Controversial, Planets in binary systems, P-type",
+        "Controversial, Planets in binary systems, S-type",
+        "Controversial, Planets in open clusters",
+        "Kepler Objects of Interest",
+        "Planets in binary systems, S-type, Confirmed planets",
+        "Retracted planet candidate",
+        "Retracted planet candidate, Planets in binary systems, S-type",
+        "Solar System"
+    ],
+    "last_model_file_hash": "69e5c7ddd89b5da7aa998da152c61886",
+    "last_dataset_hash": "b55771329d8471a3e903a723a3c1ddb8",
+    "last_scheduler_trace": "Traceback (most recent call last):\n  File \"/home/tangoisdown/LOTL/TIDHQ.NETWORK/TIDHQ.NET-OUTPOSTS/TID-AD-ASTRA/ml/app/system/scheduler.py\", line 33, in schedule_retraining\n    result = auto_retrain()\n  File \"/home/tangoisdown/LOTL/TIDHQ.NETWORK/TIDHQ.NET-OUTPOSTS/TID-AD-ASTRA/ml/app/system/auto_retrain.py\", line 40, in auto_retrain\n    update_awareness_state(df, dataset_path=source_path, dataset_source=source_type)\nTypeError: update_awareness_state() takes 0 positional arguments but 1 was given\n",
+    "dataset_path": "/home/tangoisdown/LOTL/TIDHQ.NETWORK/TIDHQ.NET-OUTPOSTS/TID-AD-ASTRA/ml/app/data/koi_fallback.csv",
+    "last_auto_retrain_status": "failed",
+    "last_auto_retrain_reason": "hash_mismatch",
+    "last_auto_retrain_time": "2025-10-12T08:25:07",
+    "last_auto_retrain_metrics": {
+        "accuracy": 0.975609756097561,
+        "f1": 0.5562706023665067,
+        "precision": 0.6693316825162667,
+        "recall": 0.5367052626088771,
+        "model_hash": "c26997b5",
+        "source": "fetched"
+    },
+    "dataset_hash": "304941566f0c339b38fff10df949bff8",
+    "last_scheduler_result": {
+        "status": "failed",
+        "error": "No valid dataset found in uploads or fallback paths."
+    },
+    "last_scheduler_metrics": {},
+    "last_dataset_source": "unknown",
+    "last_auto_retrain_error": "No valid dataset found in uploads or fallback paths.",
+    "last_refresh_sources": {
+        "nasa_exoplanets": {
+            "rows": 5000,
+            "path": "/home/tangoisdown/LOTL/TIDHQ.NETWORK/TIDHQ.NET-OUTPOSTS/TID-AD-ASTRA/ml/data/nasa_exoplanets.csv"
+        },
+        "open_exoplanet_catalogue": {
+            "rows": 0,
+            "path": null
+        }
+    },
+    "refresh_source": "github_action",
+    "last_dataset_refresh": "2025-10-12T08:24:58",
+    "feature_names": [
+        "binaryflag",
+        "mass",
+        "radius",
+        "period",
+        "semimajoraxis",
+        "eccentricity",
+        "periastron",
+        "longitude",
+        "ascendingnode",
+        "inclination",
+        "temperature",
+        "age",
+        "discoveryyear",
+        "system_distance",
+        "hoststar_mass",
+        "hoststar_radius",
+        "hoststar_metallicity",
+        "hoststar_temperature",
+        "hoststar_age"
+    ]
+}

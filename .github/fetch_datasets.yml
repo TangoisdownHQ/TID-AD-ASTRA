@@ -1,0 +1,37 @@
+name: 🌐 Refresh Datasets
+
+on:
+  schedule:
+    - cron: "0 3 * * *"  # every day at 03:00 UTC
+  workflow_dispatch:     # allow manual trigger
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 🧩 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: 📦 Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests pandas
+
+      - name: 🌐 Run data fetch + update script
+        run: |
+          python ml/app/system/update_datasets.py
+
+      - name: 🪶 Commit and push updated datasets
+        run: |
+          git config user.name "TID-ASTRA Bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add ml/data/*.csv README.md || true
+          git commit -m "🪐 Auto-refresh datasets [skip ci]" || echo "No changes to commit"
+          git push
+

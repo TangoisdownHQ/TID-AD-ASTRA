@@ -1,0 +1,24 @@
+[
+  {
+    "hash": "535576f2",
+    "path": "/home/tangoisdown/LOTL/TIDHQ.NETWORK/TIDHQ.NET-OUTPOSTS/TID-AD-ASTRA/ml/app/models/artifacts/model_535576f2.joblib",
+    "created_at": "2025-10-05T16:28:14.572593",
+    "metrics": {
+      "accuracy": 0.8977853492333902,
+      "precision": 0.8989746121175456,
+      "recall": 0.8977853492333902,
+      "f1": 0.8951907409174551
+    }
+  },
+  {
+    "hash": "e83147f0",
+    "path": "/home/tangoisdown/LOTL/TIDHQ.NETWORK/TIDHQ.NET-OUTPOSTS/TID-AD-ASTRA/ml/app/models/artifacts/model_e83147f0.joblib",
+    "created_at": "2025-10-06T04:23:48.271987",
+    "metrics": {
+      "accuracy": 0.8977853492333902,
+      "precision": 0.8989746121175456,
+      "recall": 0.8977853492333902,
+      "f1": 0.8951907409174551
+    }
+  }
+]

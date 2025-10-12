@@ -1,0 +1,158 @@
+[
+    {
+        "hash": "30494156",
+        "path": "/home/tangoisdown/LOTL/TIDHQ.NETWORK/TIDHQ.NET-OUTPOSTS/TID-AD-ASTRA/ml/models/artifacts/model_30494156.joblib",
+        "created_at": "2025-10-06T01:06:14.255412",
+        "metrics": {
+            "accuracy": 0.8977853492333902,
+            "precision": 0.8917647058823529,
+            "recall": 0.9643765903307888,
+            "f1": 0.9266503667481663
+        },
+        "dataset_source": "fallback",
+        "dataset_path": "/home/tangoisdown/LOTL/TIDHQ.NETWORK/TIDHQ.NET-OUTPOSTS/TID-AD-ASTRA/ml/app/data/koi_fallback.csv"
+    },
+    {
+        "hash": "30494156",
+        "path": "/home/tangoisdown/LOTL/TIDHQ.NETWORK/TIDHQ.NET-OUTPOSTS/TID-AD-ASTRA/ml/models/artifacts/model_30494156.joblib",
+        "created_at": "2025-10-06T01:43:36.462201",
+        "metrics": {
+            "accuracy": 0.8977853492333902,
+            "precision": 0.8917647058823529,
+            "recall": 0.9643765903307888,
+            "f1": 0.9266503667481663
+        },
+        "dataset_source": "fallback",
+        "dataset_path": "/home/tangoisdown/LOTL/TIDHQ.NETWORK/TIDHQ.NET-OUTPOSTS/TID-AD-ASTRA/ml/app/data/koi_fallback.csv"
+    },
+    {
+        "hash": "30494156",
+        "path": "/home/tangoisdown/LOTL/TIDHQ.NETWORK/TIDHQ.NET-OUTPOSTS/TID-AD-ASTRA/ml/models/artifacts/model_30494156.joblib",
+        "created_at": "2025-10-06T05:36:44.899231",
+        "metrics": {
+            "accuracy": 0.8977853492333902,
+            "precision": 0.8917647058823529,
+            "recall": 0.9643765903307888,
+            "f1": 0.9266503667481663
+        },
+        "dataset_source": "fallback",
+        "dataset_path": "/home/tangoisdown/LOTL/TIDHQ.NETWORK/TIDHQ.NET-OUTPOSTS/TID-AD-ASTRA/ml/app/data/koi_fallback.csv"
+    },
+    {
+        "hash": "30494156",
+        "path": "/home/tangoisdown/LOTL/TIDHQ.NETWORK/TIDHQ.NET-OUTPOSTS/TID-AD-ASTRA/ml/models/artifacts/model_30494156.joblib",
+        "created_at": "2025-10-06T17:13:25.064101",
+        "metrics": {
+            "accuracy": 0.8977853492333902,
+            "precision": 0.8917647058823529,
+            "recall": 0.9643765903307888,
+            "f1": 0.9266503667481663
+        },
+        "dataset_source": "fallback",
+        "dataset_path": "/home/tangoisdown/LOTL/TIDHQ.NETWORK/TIDHQ.NET-OUTPOSTS/TID-AD-ASTRA/ml/app/data/koi_fallback.csv"
+    },
+    {
+        "hash": "30494156",
+        "path": "/home/tangoisdown/LOTL/TIDHQ.NETWORK/TIDHQ.NET-OUTPOSTS/TID-AD-ASTRA/ml/models/artifacts/model_30494156.joblib",
+        "created_at": "2025-10-06T19:17:58.240317",
+        "metrics": {
+            "accuracy": 0.8977853492333902,
+            "precision": 0.9026724763979666,
+            "recall": 0.8636315941344666,
+            "f1": 0.8790555204527348
+        },
+        "dataset_source": "fallback",
+        "dataset_path": "/home/tangoisdown/LOTL/TIDHQ.NETWORK/TIDHQ.NET-OUTPOSTS/TID-AD-ASTRA/ml/app/data/koi_fallback.csv"
+    },
+    {
+        "hash": "c26997b5",
+        "path": "/home/tangoisdown/LOTL/TIDHQ.NETWORK/TIDHQ.NET-OUTPOSTS/TID-AD-ASTRA/ml/models/artifacts/model_c26997b5.joblib",
+        "created_at": "2025-10-06T19:47:48.052937",
+        "metrics": {
+            "accuracy": 0.975609756097561,
+            "precision": 0.6693316825162667,
+            "recall": 0.5367052626088771,
+            "f1": 0.5562706023665067
+        },
+        "dataset_source": "fetched",
+        "dataset_path": "/home/tangoisdown/LOTL/TIDHQ.NETWORK/TIDHQ.NET-OUTPOSTS/TID-AD-ASTRA/ml/data/open_exoplanet_catalogue.csv"
+    },
+    {
+        "hash": "c26997b5",
+        "path": "/home/tangoisdown/LOTL/TIDHQ.NETWORK/TIDHQ.NET-OUTPOSTS/TID-AD-ASTRA/ml/models/artifacts/model_c26997b5.joblib",
+        "created_at": "2025-10-06T20:16:21.349615",
+        "metrics": {
+            "accuracy": 0.975609756097561,
+            "precision": 0.6693316825162667,
+            "recall": 0.5367052626088771,
+            "f1": 0.5562706023665067
+        },
+        "dataset_source": "fetched",
+        "dataset_path": "/home/tangoisdown/LOTL/TIDHQ.NETWORK/TIDHQ.NET-OUTPOSTS/TID-AD-ASTRA/ml/data/open_exoplanet_catalogue.csv"
+    },
+    {
+        "hash": "c26997b5",
+        "path": "/home/tangoisdown/LOTL/TIDHQ.NETWORK/TIDHQ.NET-OUTPOSTS/TID-AD-ASTRA/ml/models/artifacts/model_c26997b5.joblib",
+        "created_at": "2025-10-07T05:45:51.363106",
+        "metrics": {
+            "accuracy": 0.975609756097561,
+            "precision": 0.6693316825162667,
+            "recall": 0.5367052626088771,
+            "f1": 0.5562706023665067
+        },
+        "dataset_source": "fetched",
+        "dataset_path": "/home/tangoisdown/LOTL/TIDHQ.NETWORK/TIDHQ.NET-OUTPOSTS/TID-AD-ASTRA/ml/data/open_exoplanet_catalogue.csv"
+    },
+    {
+        "hash": "c26997b5",
+        "path": "/home/tangoisdown/LOTL/TIDHQ.NETWORK/TIDHQ.NET-OUTPOSTS/TID-AD-ASTRA/ml/models/artifacts/model_c26997b5.joblib",
+        "created_at": "2025-10-07T05:48:47.770672",
+        "metrics": {
+            "accuracy": 0.975609756097561,
+            "precision": 0.6693316825162667,
+            "recall": 0.5367052626088771,
+            "f1": 0.5562706023665067
+        },
+        "dataset_source": "fetched",
+        "dataset_path": "/home/tangoisdown/LOTL/TIDHQ.NETWORK/TIDHQ.NET-OUTPOSTS/TID-AD-ASTRA/ml/data/open_exoplanet_catalogue.csv"
+    },
+    {
+        "hash": "c26997b5",
+        "path": "/home/tangoisdown/LOTL/TIDHQ.NETWORK/TIDHQ.NET-OUTPOSTS/TID-AD-ASTRA/ml/models/artifacts/model_c26997b5.joblib",
+        "created_at": "2025-10-07T06:24:29.205651",
+        "metrics": {
+            "accuracy": 0.975609756097561,
+            "precision": 0.6693316825162667,
+            "recall": 0.5367052626088771,
+            "f1": 0.5562706023665067
+        },
+        "dataset_source": "fetched",
+        "dataset_path": "/home/tangoisdown/LOTL/TIDHQ.NETWORK/TIDHQ.NET-OUTPOSTS/TID-AD-ASTRA/ml/data/open_exoplanet_catalogue.csv"
+    },
+    {
+        "hash": "c26997b5",
+        "path": "/home/tangoisdown/LOTL/TIDHQ.NETWORK/TIDHQ.NET-OUTPOSTS/TID-AD-ASTRA/ml/models/artifacts/model_c26997b5.joblib",
+        "created_at": "2025-10-07T06:38:49.256518",
+        "metrics": {
+            "accuracy": 0.975609756097561,
+            "precision": 0.6693316825162667,
+            "recall": 0.5367052626088771,
+            "f1": 0.5562706023665067
+        },
+        "dataset_source": "fetched",
+        "dataset_path": "/home/tangoisdown/LOTL/TIDHQ.NETWORK/TIDHQ.NET-OUTPOSTS/TID-AD-ASTRA/ml/data/open_exoplanet_catalogue.csv"
+    },
+    {
+        "hash": "c26997b5",
+        "path": "/home/tangoisdown/LOTL/TIDHQ.NETWORK/TIDHQ.NET-OUTPOSTS/TID-AD-ASTRA/ml/models/artifacts/model_c26997b5.joblib",
+        "created_at": "2025-10-07T18:36:23.644784",
+        "metrics": {
+            "accuracy": 0.975609756097561,
+            "precision": 0.6693316825162667,
+            "recall": 0.5367052626088771,
+            "f1": 0.5562706023665067
+        },
+        "dataset_source": "fetched",
+        "dataset_path": "/home/tangoisdown/LOTL/TIDHQ.NETWORK/TIDHQ.NET-OUTPOSTS/TID-AD-ASTRA/ml/data/open_exoplanet_catalogue.csv"
+    }
+]

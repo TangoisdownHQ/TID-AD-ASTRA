@@ -1,0 +1,17 @@
+fastapi==0.115.0
+uvicorn==0.30.6
+pydantic==2.9.2
+numpy==2.1.1
+pandas==2.2.2
+scikit-learn==1.5.2
+xgboost==2.1.1
+lightgbm==4.5.0
+shap==0.46.0
+matplotlib==3.9.2
+astropy==6.1.2
+lightkurve==2.4.2
+wotan==1.10
+astroquery==0.4.7
+requests==2.32.3
+python-multipart==0.0.9
+
