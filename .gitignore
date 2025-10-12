@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.db
+*.sqlite3
+*.log
+
+# Virtual environments
+.venv/
+env/
+venv/
+
+# Datasets and models
+*.joblib
+*.pkl
+*.h5
+*.csv
+*.npy
+*.npz
+*.sav
+*.onnx
+*.pth
+*.ckpt
+ml/data/
+ml/app/data/
+models/artifacts/*.joblib
+registry.json
+
+# Node / frontend
+node_modules/
+ui/node_modules/
+dist/
+build/
+.next/
+.cache/
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+
