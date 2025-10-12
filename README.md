@@ -31,7 +31,7 @@ python fetch_data.py --source nasa
 python fetch_data.py --source open
 
 
-🧠 Core Features
+ ## Core Features
 1. Explainable AI for Planetary Habitability
 
 Predicts exoplanet classification and habitability index
@@ -93,7 +93,7 @@ Backend	FastAPI service exposing /models, /planets, /explain
 Interface	CLI console + REST API
 Storage	Local model registry (models/artifacts/registry.json)
 
-🚀 Quick Start
+## Quick Start
 1. Clone the Repository
 git clone https://github.com/TangoisdownHQ/TID-AD-ASTRA.git
 cd TID-AD-ASTRA/ml
@@ -114,7 +114,8 @@ curl -X POST "http://127.0.0.1:8000/models/explain" \
 5. Launch the Mission Console
 make run-console
 
-📤 Add Your Own Datasets
+
+ ## Add Your Own Datasets
 
 TID-AD-ASTRA supports open exploration — upload your own exoplanet datasets, telescope data, or simulated planetary environments.
 
@@ -148,7 +149,8 @@ python fetch_data.py --source open
 3. Train a Model on Custom Data
 python -m app.models.classifier --train ml/app/data/uploads/your_exoplanet_data.csv
 
-🪙 Dataset Sources
+ 
+ ## Dataset Sources
 Source	Description
 NASA Exoplanet Archive
 	Official exoplanet dataset
@@ -156,7 +158,7 @@ Open Exoplanet Catalogue
 	Community-curated planetary data
 
 
-🔭 Technology Stack
+## Technology Stack
 Category	Technology
 Language	Python 3.11
 Framework	FastAPI
@@ -166,7 +168,7 @@ Data Layer	CSV + JSON registries
 Interface	CLI (Rich-based) + REST API
 
 
-🌍 Vision
+## 🌍 Vision
 
 TID-AD-ASTRA is a foundation for autonomous, explainable AI agents that can:
 
@@ -176,7 +178,8 @@ Integrate with future NASA APIs and sensors
 
 Support real-time decision support for interplanetary logistics
 
-🚀 Future Enhancements
+
+## 🚀 Future Enhancements
 🧠 AI & Modeling
 
 Expand models with neural networks and ensemble systems
@@ -185,7 +188,8 @@ Add SHAP visual dashboards for interpretability
 
 Enable real-time inference from streaming telemetry
 
-🛰️ Data & Integration
+
+## 🛰️ Data & Integration
 
 Automate synchronization with NASA’s live API
 
@@ -193,7 +197,8 @@ Merge data from multiple observatories (Kepler, TESS, Gaia)
 
 Visualize data provenance with interactive lineage graphs
 
-🪐 Interface & Visualization
+
+## 🪐 Interface & Visualization
 
 Build a web-based Mission Console with dynamic dashboards
 
@@ -201,7 +206,8 @@ Support drag-and-drop dataset uploads
 
 Add 3D planetary system visualizations (using Three.js + NASA JPL data)
 
-☁️ Deployment & Scale
+
+## ☁️ Deployment & Scale
 
 Containerize via Docker and deploy on Fly.io or Kubernetes
 
@@ -209,7 +215,8 @@ Add secure API keys and user roles for collaboration
 
 Implement automated retraining and model versioning pipelines
 
-🧬 Long-Term Vision
+
+## 🧬 Long-Term Vision
 
 Develop an autonomous science agent capable of reading research papers, updating models, and proposing new exploration targets
 
@@ -219,19 +226,22 @@ Integrate with spacecraft telemetry for live adaptive AI analytics
 
 “To the stars — and beyond the noise.” 🌠
 
-👩‍🚀 Team TangoisdownHQ
+
+## 👩‍🚀 Team TangoisdownHQ
 Role	Name / Handle	Focus
 Founder & Engineer	@TangoisdownHQ
 Cybersecurity, AI Infrastructure, Explainability, System Design
 
-🛰️ Contact
+
+## 🛰️ Contact
 📫 Email: tangoisdown1@proton.me
 
 💻 GitHub: TangoisdownHQ
 
 🌐 Live Demo: https://tid-adastra.fly.dev
 
-🏁 Submission Info
+
+## 🏁 Submission Info
 Field	Value
 Region	NASA Space Apps Challenge 2025
 Team Name	TangoisdownHQ
