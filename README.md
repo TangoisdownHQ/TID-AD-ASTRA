@@ -94,19 +94,19 @@ Interface	CLI console + REST API
 Storage	Local model registry (models/artifacts/registry.json)
 
 ## Quick Start
-1. Clone the Repository
+## 1. Clone the Repository
 git clone https://github.com/TangoisdownHQ/TID-AD-ASTRA.git
 cd TID-AD-ASTRA/ml
 
-2. Set Up Environment
+## 2. Set Up Environment
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-3. Run the Backend
+## 3. Run the Backend
 make run
 
-4. Test the Explainability API
+## 4. Test the Explainability API
 curl -X POST "http://127.0.0.1:8000/models/explain" \
   -H "Content-Type: application/json" \
   -d '{"planet_name":"Kepler-442b","features":[]}' | jq
@@ -116,7 +116,6 @@ make run-console
 
 
  ## Add Your Own Datasets
-
 TID-AD-ASTRA supports open exploration — upload your own exoplanet datasets, telescope data, or simulated planetary environments.
 
 1. Upload CSV Files
@@ -127,7 +126,7 @@ ml/app/data/uploads/
 └── your_exoplanet_data.csv
 
 
-CSV Schema (flexible, missing values handled automatically):
+## CSV Schema (flexible, missing values handled automatically):
 
 Column	Description
 planet_name	Planet identifier
@@ -142,11 +141,11 @@ distance_from_earth_ly	Distance (light-years)
 host_star_temperature	Star temperature (K)
 host_star_spectral_type	Star type (e.g., G2V)
 
-2. Fetch Data Automatically
+## 2. Fetch Data Automatically
 python fetch_data.py --source nasa
 python fetch_data.py --source open
 
-3. Train a Model on Custom Data
+## 3. Train a Model on Custom Data
 python -m app.models.classifier --train ml/app/data/uploads/your_exoplanet_data.csv
 
  
@@ -227,7 +226,7 @@ Integrate with spacecraft telemetry for live adaptive AI analytics
 “To the stars — and beyond the noise.” 🌠
 
 
-## 👩‍🚀 Team TangoisdownHQ
+##  Team TangoisdownHQ
 Role	Name / Handle	Focus
 Founder & Engineer	@TangoisdownHQ
 Cybersecurity, AI Infrastructure, Explainability, System Design
@@ -248,9 +247,8 @@ Team Name	TangoisdownHQ
 Project	TID-AD-ASTRA
 
 
-⚡ License
-
+## ⚡ License
 This project is open-source under the MIT License.
 NASA datasets and related content are used under the NASA Open Data Policy.
 
-"TID-AD-ASTRA — decoding the universe, one planet at a time & beyond the noise" 🌌
+## "TID-AD-ASTRA — decoding the universe, one planet at a time & beyond the noise" 🌌
