@@ -75,17 +75,18 @@ Missing-data diagnostics
 Dataset provenance
 
 🪐 Example Output
-🧠 Summary:
+
+## 🧠 Summary:
    BD+20 2457 b is predicted as class 1 with confidence 0.77.
    Top influencing factors: feature_1, feature_0.
    Habitability index: 0.00 — unlikely to support Earth-like life.
 
-🧩 Diagnostics:
+## 🧩 Diagnostics:
    Missing or incomplete data for fields:
    discovery_year, radius_earth, host_star.temperature.
    Default estimates were used where possible.
 
-🧬 Architecture
+## 🧬 Architecture
 Layer	Description
 Data	NASA Exoplanet Archive + Open Exoplanet Catalogue
 Model	Scikit-learn classifier with explainability
@@ -128,6 +129,7 @@ ml/app/data/uploads/
 
 ## CSV Schema (flexible, missing values handled automatically):
 
+
 Column	Description
 planet_name	Planet identifier
 mass_earth	Mass (in Earth masses)
@@ -141,9 +143,11 @@ distance_from_earth_ly	Distance (light-years)
 host_star_temperature	Star temperature (K)
 host_star_spectral_type	Star type (e.g., G2V)
 
+
 ## 2. Fetch Data Automatically
 python fetch_data.py --source nasa
 python fetch_data.py --source open
+
 
 ## 3. Train a Model on Custom Data
 python -m app.models.classifier --train ml/app/data/uploads/your_exoplanet_data.csv
