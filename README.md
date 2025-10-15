@@ -6,6 +6,7 @@
 ![FastAPI](https://img.shields.io/badge/FastAPI-Framework-green?logo=fastapi)
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 ![NASA Space Apps](https://img.shields.io/badge/NASA_Space_Apps-2025-red?logo=nasa&logoColor=white)
+![TangoisdownHQ](https://img.shields.io/badge/TangoisdownHQ-Cyber_Intelligence-002b36?logo=linux&logoColor=white)
 
 **Built for the 2025 NASA Space Apps Challenge — Team TangoisdownHQ**
 
