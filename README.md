@@ -7,6 +7,7 @@
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 ![NASA Space Apps](https://img.shields.io/badge/NASA_Space_Apps-2025-red?logo=nasa&logoColor=white)
 ![TangoisdownHQ](https://img.shields.io/badge/TangoisdownHQ-Cyber_Intelligence-002b36?logo=linux&logoColor=white)
+![TID-AD-ASTRA](https://img.shields.io/badge/TID--AD--ASTRA-To_the_Stars-003366?logo=nasa&logoColor=white)
 
 **Built for the 2025 NASA Space Apps Challenge — Team TangoisdownHQ**
 
