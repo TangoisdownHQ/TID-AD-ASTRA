@@ -239,7 +239,6 @@ Cybersecurity, AI Infrastructure, Explainability, System Design
 
 
 ## 🛰️ Contact
-📫 Email: tangoisdown1@proton.me
 
 💻 GitHub: TangoisdownHQ
 
