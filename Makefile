@@ -3,7 +3,7 @@
 # ============================================
 
 PYTHON = ml/.venv/bin/python
-API_PORT = 8000
+API_PORT = 8080
 
 run-api:
 	@echo "🚀 Launching TID-AD-ASTRA API on port $(API_PORT)..."

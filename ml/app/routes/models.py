@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pathlib import Path
 import numpy as np
 import joblib
@@ -10,8 +10,9 @@ from app.schemas import PredictRequest
 
 router = APIRouter(tags=["Models", "Registry"])
 
-MODEL_DIR = Path(__file__).resolve().parents[1] / "models" / "artifacts"
+MODEL_DIR = Path(__file__).resolve().parents[2] / "models" / "artifacts"
 META_FILE = MODEL_DIR / "registry.json"
+print("Using registry:", META_FILE)
 
 
 @router.get("/artifacts")
@@ -97,7 +98,6 @@ def predict_exoplanet(features: dict):
     """
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Load registry and latest model
     if not META_FILE.exists():
         raise HTTPException(status_code=404, detail="No registry.json found — train a model first.")
 
@@ -110,10 +110,8 @@ def predict_exoplanet(features: dict):
     latest = sorted(registry, key=lambda x: x.get("created_at", ""), reverse=True)[0]
     model_path = latest["path"]
 
-    # Load model
     model = joblib.load(model_path)
 
-    # Validate input
     if "features" not in features:
         raise HTTPException(status_code=400, detail="Missing 'features' in request body.")
     
@@ -155,75 +153,162 @@ def get_model_lineage():
 
 
 # ============================================================
-# 🧠 Safe Explainability Endpoint
+# 🧠 Explainability Endpoints (POST + GET)
 # ============================================================
+
 @router.post("/explain")
 def explain(req: PredictRequest):
     """
-    Provide an interpretable explanation for model predictions.
-    Robust to missing or malformed data, and includes reason for fallback.
+    Primary explain endpoint for programmatic clients.
     """
     try:
-        features = getattr(req, "features", None)
+        features = req.features or []
         planet_name = getattr(req, "planet_name", None)
-        missing_fields = []
 
-        # ✅ Handle missing or invalid features gracefully
-        if features is None or not isinstance(features, (list, tuple)) or not features:
-            features = [0.5] * 10  # safe fallback vector
-            missing_fields.append("features")
+        result = explain_prediction(features, planet_name)
 
-        # ✅ Ensure all floats are finite
-        clean_features = []
-        for x in features:
-            if isinstance(x, (float, int)) and np.isfinite(x):
-                clean_features.append(float(x))
-            else:
-                clean_features.append(0.0)
-                missing_fields.append("non-finite-value")
-
-        # ✅ Run the explanation safely
-        try:
-            result = explain_prediction(clean_features, planet_name)
-        except Exception as e:
-            result = {
-                "planet": planet_name or "Unknown",
-                "habitability_index": np.nan,
-                "confidence": None,
-                "predicted_label": 0,
-                "summary": f"Explanation unavailable: {str(e)}"
-            }
-
-        # ✅ Detect missing data inside planet_info (if present)
-        planet_info = result.get("planet_info", {})
-        if planet_info:
-            for field, value in planet_info.items():
-                if value in [None, "", [], {}, np.nan]:
-                    missing_fields.append(field)
-
-        # ✅ Add reason field for context
-        if missing_fields:
-            result["reason"] = (
-                "Missing or incomplete data for fields: "
-                + ", ".join(sorted(set(missing_fields)))
-                + ". Default estimates were used where possible."
+        if not result.get("summary"):
+            result["summary"] = (
+                f"{planet_name} could not be fully analyzed due to missing model "
+                "or incomplete observational data. This does not mean the planet "
+                "is uninteresting — only that current datasets are limited."
             )
-        else:
-            result["reason"] = "All required planetary parameters available."
 
-        # ✅ Sanitize output for JSON safety
-        def sanitize(obj):
-            if isinstance(obj, float) and (np.isnan(obj) or np.isinf(obj)):
-                return None
-            elif isinstance(obj, dict):
-                return {k: sanitize(v) for k, v in obj.items()}
-            elif isinstance(obj, list):
-                return [sanitize(v) for v in obj]
-            else:
-                return obj
+        result.setdefault("confidence", None)
+        result.setdefault("habitability_index", None)
+        result.setdefault("model", "Unavailable")
+        result.setdefault("top_features", {})
 
-        return sanitize(result)
+        return result
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Explainability failed: {str(e)}")
+        return {
+            "model": "Unavailable",
+            "predicted_label": None,
+            "confidence": None,
+            "habitability_index": None,
+            "top_features": {},
+            "summary": (
+                f"Analysis for {req.planet_name} is currently unavailable. "
+                "This may be due to missing datasets, model artifacts, or incomplete "
+                "observational parameters. The system will improve as more data is added."
+            ),
+            "error": str(e)
+        }
+
+
+@router.get("/explain")
+def explain_get(planet: str = Query(None), features: str = Query("")):
+    """
+    Convenience GET endpoint for browser/curl usage.
+    Example:
+      /explain?planet=Kepler-452b&features=0,0,0,0,0,0,0,0,0,0,0,0
+    """
+    try:
+        feature_list = [float(x) for x in features.split(",") if x.strip()] if features else []
+        result = explain_prediction(feature_list, planet_name=planet)
+
+        if not result.get("summary"):
+            result["summary"] = (
+                f"{planet} could not be fully analyzed due to missing model "
+                "or incomplete observational data."
+            )
+
+        return result
+
+    except Exception as e:
+        return {
+            "model": "Unavailable",
+            "predicted_label": None,
+            "confidence": None,
+            "habitability_index": None,
+            "top_features": {},
+            "summary": (
+                f"Analysis for {planet} is currently unavailable. "
+                "This may be due to missing datasets or model artifacts."
+            ),
+            "error": str(e)
+        }
+
+@router.get("/compare")
+def compare_models(
+    planet_a: str = Query(..., description="First planet name"),
+    planet_b: str = Query(..., description="Second planet name"),
+    features: str = Query("", description="Comma-separated feature vector"),
+):
+    """
+    Compare two planets using the latest model + habitability layer.
+
+    Example:
+      /models/compare?planet_a=Kepler-452b&planet_b=Kepler-10b&features=0,0,0,0,0,0,0,0,0,0,0,0
+    """
+
+    # ---- Parse features safely ----
+    try:
+        feats = [float(x) for x in features.split(",") if x.strip()] if features else []
+    except Exception:
+        feats = []
+
+    # ---- Run explanations safely ----
+    try:
+        a = explain_prediction(feats, planet_name=planet_a)
+    except Exception as e:
+        a = {
+            "model": "Unavailable",
+            "predicted_label": None,
+            "confidence": None,
+            "habitability_index": None,
+            "top_features": {},
+            "planet_info": {},
+            "summary": f"Failed to analyze {planet_a}: {str(e)}",
+            "error": str(e),
+        }
+
+    try:
+        b = explain_prediction(feats, planet_name=planet_b)
+    except Exception as e:
+        b = {
+            "model": "Unavailable",
+            "predicted_label": None,
+            "confidence": None,
+            "habitability_index": None,
+            "top_features": {},
+            "planet_info": {},
+            "summary": f"Failed to analyze {planet_b}: {str(e)}",
+            "error": str(e),
+        }
+
+    # ---- Comparison logic ----
+    ha = a.get("habitability_index") or 0.0
+    hb = b.get("habitability_index") or 0.0
+    delta = round(ha - hb, 3)
+
+    if ha == 0 and hb == 0:
+        verdict = "Both planets lack sufficient data for a strong habitability comparison."
+    elif delta > 0:
+        verdict = f"{planet_a} appears more potentially habitable than {planet_b}."
+    elif delta < 0:
+        verdict = f"{planet_b} appears more potentially habitable than {planet_a}."
+    else:
+        verdict = f"{planet_a} and {planet_b} appear similarly habitable based on current data."
+
+    # ---- Feature-level diff (if SHAP worked for either) ----
+    diff_features = []
+    fa = set(a.get("top_features", {}).keys())
+    fb = set(b.get("top_features", {}).keys())
+    diff_features = list((fa ^ fb))[:5]  # symmetric diff, capped
+
+    return {
+        "planet_a": planet_a,
+        "planet_b": planet_b,
+        "prediction_a": a,
+        "prediction_b": b,
+        "comparison": {
+            "habitability_a": ha,
+            "habitability_b": hb,
+            "habitability_delta": delta,
+            "key_differences": diff_features,
+            "summary": verdict,
+        }
+    }
 

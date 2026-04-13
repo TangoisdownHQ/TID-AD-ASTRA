@@ -93,7 +93,7 @@ def auto_retrain():
             dataset_path=str(source_path)
         )
 
-        print(f"✅ Auto-retrain complete — new model accuracy: {metrics['accuracy']:.3f}")
+        print(f"✅ Auto-retrain complete — new model accuracy: {metrics['metrics']['accuracy']:.3f}")
         return {"status": "retrained", "reason": drift_reason, "metrics": metrics, "dataset_source": source_type}
 
     else:

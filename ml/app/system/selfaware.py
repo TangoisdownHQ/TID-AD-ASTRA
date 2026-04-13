@@ -94,7 +94,36 @@ def update_awareness_state(**kwargs):
 # =========================================================
 # 🪐 COMPATIBILITY WRAPPER
 # =========================================================
-def log_dataset_state(df, dataset_path: str, dataset_source: str):
+def log_dataset_state(
+    df,
+    dataset_path=None,
+    dataset_source=None,
+    source_links=None,
+    reference=None,
+):
+    state = {}
+
+    if AWARENESS_FILE.exists():
+        try:
+            with open(AWARENESS_FILE, "r") as f:
+                state = json.load(f)
+        except Exception:
+            state = {}
+
+    state["last_dataset"] = {
+        "rows": int(df.shape[0]),
+        "columns": int(df.shape[1]),
+        "dataset_path": dataset_path,
+        "dataset_source": dataset_source,
+        "source_links": source_links or {},
+        "reference": reference,
+        "updated_at": datetime.now().isoformat(),
+    }
+
+    AWARENESS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with open(AWARENESS_FILE, "w") as f:
+        json.dump(state, f, indent=2)
+
     """
     Compatibility wrapper for dataset logging.
     Converts positional arguments to keyword-based update call.

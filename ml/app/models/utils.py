@@ -4,7 +4,8 @@ import joblib
 from pathlib import Path
 from app.system.selfaware import AWARENESS_FILE
 
-ARTIFACT_DIR = Path(__file__).resolve().parents[1] / "models" / "artifacts"
+# 🔥 FIXED PATH (align with classifier.py)
+ARTIFACT_DIR = Path(__file__).resolve().parents[2] / "models" / "artifacts"
 REGISTRY_FILE = ARTIFACT_DIR / "registry.json"
 
 def load_latest_model():
