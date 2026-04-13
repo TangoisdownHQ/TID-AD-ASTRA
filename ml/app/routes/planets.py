@@ -1,12 +1,14 @@
-from fastapi import APIRouter, HTTPException, Query
+import math
 from pathlib import Path
-import pandas as pd
+
 import requests
+from fastapi import APIRouter, HTTPException, Query
 
 from app.system.planet_knowledge import (
+    get_planet_catalog_records,
     get_planet_info,
+    load_planet_data,
     search_planets,
-    compute_habitability,
 )
 
 router = APIRouter()
@@ -18,6 +20,8 @@ DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 PLANET_DATA_PATHS = [
     DATA_DIR / "nasa_exoplanets.csv",
     DATA_DIR / "open_exoplanet_catalogue.csv",
+    DATA_DIR / "koi_fallback.csv",
+    DATA_DIR / "astroml_exoplanets.csv",
 ]
 
 NASA_DATA_URL = (
@@ -68,20 +72,22 @@ async def planet_info(name: str | None = Query(None, description="Exact planet n
         return info
 
     planets = []
-    for path in PLANET_DATA_PATHS:
-        if path.exists():
-            try:
-                df = pd.read_csv(path, on_bad_lines="skip", engine="python")
-                name_col = next(
-                    (c for c in df.columns if "name" in c.lower() or "planet" in c.lower()),
-                    None,
-                )
-                if name_col:
-                    for pname in df[name_col].dropna().unique().tolist()[:100]:
-                        planets.append({"name": str(pname)})
-                    break
-            except Exception as e:
-                print(f"⚠️ Failed to load planet data from {path}: {e}")
+    df = load_planet_data()
+    if not df.empty:
+        name_col = next(
+            (c for c in ["pl_name", "name", "kepoi_name", "planet_name"] if c in df.columns),
+            None,
+        )
+        if name_col:
+            unique_names = (
+                df[name_col]
+                .dropna()
+                .astype(str)
+                .drop_duplicates()
+                .sort_values()
+                .tolist()
+            )
+            planets = [{"name": name} for name in unique_names[:250]]
 
     if not planets:
         raise HTTPException(status_code=500, detail="No planet data available.")
@@ -99,9 +105,6 @@ async def planet_search(query: str = Query(..., description="Partial search term
         raise HTTPException(status_code=404, detail="No matching planets found")
     return results
 
-
-import math
-
 # =========================================================
 # 🌍 /planets/all — dynamic full dataset (hardened JSON-safe)
 # =========================================================
@@ -113,74 +116,9 @@ async def planet_all(limit: int = Query(100, description="Number of planets to r
     """
     ensure_dataset()
 
-    essential_cols = [
-        "pl_name", "pl_eqt", "pl_rade", "pl_orbsmax",
-        "pl_orbeccen", "sy_dist", "disc_year", "discoverymethod",
-    ]
-
-    df = None
-    last_error = None
-
-    for path in PLANET_DATA_PATHS:
-        if not path.exists():
-            continue
-        try:
-            print(f"🧩 Loading dataset: {path}")
-            df = pd.read_csv(
-                path,
-                usecols=lambda c: any(ec in c for ec in essential_cols),
-                engine="python",
-                on_bad_lines="skip"
-            )
-            print(f"✅ Loaded {len(df)} entries from {path.name}")
-            break
-        except Exception as e:
-            last_error = e
-            print(f"⚠️ Failed to read {path}: {e}")
-            continue
-
-    if df is None or df.empty:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to load planet data. Last error: {last_error}",
-        )
-
-    df.columns = [c.lower().strip() for c in df.columns]
-
-    # 🔧 Replace NaN/inf with None globally
-    df = df.replace([float("inf"), float("-inf")], None)
-    df = df.where(pd.notna(df), None)
-
-    combined = []
-    for _, row in df.head(limit).iterrows():
-        name = row.get("pl_name") or "Unknown"
-        score = compute_habitability(
-            temp=row.get("pl_eqt"),
-            radius=row.get("pl_rade"),
-            semimajoraxis=row.get("pl_orbsmax"),
-            ecc=row.get("pl_orbeccen"),
-        )
-
-        status = (
-            "habitable"
-            if score >= 0.7
-            else "marginal"
-            if score >= 0.3
-            else "inhospitable"
-        )
-
-        combined.append(
-            {
-                "planet_name": str(name),
-                "habitability_score": score,
-                "status": status,
-                "temperature": row.get("pl_eqt"),
-                "radius": row.get("pl_rade"),
-                "distance_ly": row.get("sy_dist"),
-                "discovery_year": row.get("disc_year"),
-                "discovery_method": row.get("discoverymethod"),
-            }
-        )
+    combined = get_planet_catalog_records()
+    if not combined:
+        raise HTTPException(status_code=500, detail="Failed to load planet data from local sources.")
 
     # Deep sanitize entire response
     def sanitize_for_json(obj):
@@ -203,4 +141,3 @@ async def planet_all(limit: int = Query(100, description="Number of planets to r
     )
 
     return combined_sorted[:limit]
-

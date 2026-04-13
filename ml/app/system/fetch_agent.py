@@ -4,17 +4,21 @@ from pathlib import Path
 from datetime import datetime
 from app.system.selfaware import update_awareness_state
 
-DATA_DIR = Path(__file__).resolve().parents[2] / "data"
+DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 NASA_TAP_URL = "https://exoplanetarchive.ipac.caltech.edu/TAP/sync"
-OPEN_EXOPLANET_URL = "https://raw.githubusercontent.com/OpenExoplanetCatalogue/oec_tables/master/comma_separated/open_exoplanet_catalogue.txt"
+OPEN_EXOPLANET_URL = "https://raw.githubusercontent.com/OpenExoplanetCatalogue/oec_tables/master/comma_separated/open_exoplanet_catalogue.csv"
 ASTROML_URL = "https://raw.githubusercontent.com/astroML/astroML-data/main/datasets/exoplanets.csv"
 
 
 def fetch_nasa_exoplanets(limit=5000) -> Path:
     """Fetch NASA Exoplanet Archive (TAP) data."""
-    query = f"select top {limit} * from exoplanets"
+    query = (
+        "select top {limit} pl_name,hostname,pl_eqt,pl_rade,pl_orbper,pl_orbsmax,"
+        "pl_orbeccen,sy_dist,disc_year,discoverymethod,st_teff,st_rad,st_spectype "
+        "from pscomppars"
+    ).format(limit=limit)
     params = {"query": query, "format": "csv"}
     path = DATA_DIR / "nasa_exoplanets.csv"
 
@@ -87,4 +91,3 @@ def run_all_fetchers():
         print("⚠️ All fetch attempts failed — fallback dataset will remain active.")
 
     print("🚀 Fetch cycle complete.")
-

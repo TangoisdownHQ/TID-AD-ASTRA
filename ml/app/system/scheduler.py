@@ -5,11 +5,12 @@ import threading
 import traceback
 from app.system.auto_retrain import auto_retrain
 from app.system.selfaware import update_awareness_state
+from app.system.update_datasets import refresh_if_stale
 
 # =========================================================
 # 🕒 CONFIGURATION
 # =========================================================
-SCHEDULE_INTERVAL_HOURS = 24  # retrain check every 24h
+SCHEDULE_INTERVAL_HOURS = 6   # dataset + retrain check every 6h
 RETRY_BACKOFF_HOURS = 2       # retry sooner if previous cycle failed
 
 
@@ -30,6 +31,7 @@ async def schedule_retraining():
         print(f"🧩 [Scheduler] {now} — Checking for retraining needs...")
 
         try:
+            dataset_refreshed = refresh_if_stale(max_age_hours=SCHEDULE_INTERVAL_HOURS)
             result = auto_retrain()
 
             # Guard against incomplete returns
@@ -42,7 +44,8 @@ async def schedule_retraining():
                 last_scheduler_status=status,
                 last_scheduler_result=result,
                 last_scheduler_metrics=metrics,
-                last_dataset_source=dataset_source
+                last_dataset_source=dataset_source,
+                last_scheduler_dataset_refresh=dataset_refreshed,
             )
 
             print(f"✅ [Scheduler] Cycle complete: {status}")
@@ -76,4 +79,3 @@ def start_scheduler_background():
     thread = threading.Thread(target=_run, daemon=True)
     thread.start()
     print("🧠 Autonomous scheduler started in background thread.")
-

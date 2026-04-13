@@ -1,4 +1,3 @@
-
 # 🌌 **TID-AD-ASTRA**
 ### _Decoding the Universe, One Planet at a Time_
 
@@ -9,251 +8,175 @@
 ![TangoisdownHQ](https://img.shields.io/badge/TangoisdownHQ-Cyber_Intelligence-002b36?logo=linux&logoColor=white)
 ![TID-AD-ASTRA](https://img.shields.io/badge/TID--AD--ASTRA-To_the_Stars-003366?logo=nasa&logoColor=white)
 
-**Built for the 2025 NASA Space Apps Challenge — Team TangoisdownHQ**
+CLI-first exoplanet explorer and explainability backend built for the 2025 NASA Space Apps Challenge.
 
----
+## What It Does
 
-## 🛰️ Overview
+TID-AD-ASTRA lets users browse planet records, inspect habitability-oriented metadata, and request model-backed explanations through:
 
-**TID-AD-ASTRA** is an **explainable AI system** that analyzes and interprets planetary data from **NASA’s Exoplanet Archive** and the **Open Exoplanet Catalogue**.  
-It predicts potential **exoplanet habitability** while explaining the *why* behind every decision — giving scientists, educators, and explorers transparent insight into how AI understands alien worlds.
+- a FastAPI backend in `ml/app`
+- a terminal UI in `app/cli/cli_explain.py`
 
-> The name means **“To the Stars”**, symbolizing our mission to make deep-space data more interpretable, accessible, and open to everyone.
+The current build merges local and refreshable data from:
 
----
+- NASA Exoplanet Archive
+- Open Exoplanet Catalogue
+- AstroML exoplanet dataset
+- NASA KOI fallback data
 
-## 🧩 Data Integration
+## Repo Layout
 
-Users can:
-- Upload new datasets directly into:
-  ```bash
-  ml/app/data/uploads/
-
-python fetch_data.py --source nasa
-python fetch_data.py --source open
-
-
- ## Core Features
-1. Explainable AI for Planetary Habitability
-
-Predicts exoplanet classification and habitability index
-
-Generates interpretable explanations for each prediction
-
-Detects missing or incomplete data and provides contextual diagnostics
-
-2. Data Lineage & Provenance
-
-Integrates NASA Exoplanet Archive + Open Exoplanet Catalogue
-
-Tracks dataset origin for each trained model artifact
-
-Ensures transparency in AI learning and decision-making
-
-3. Model Management Console (FastAPI)
-
-Central registry with:
-
-Metadata (registry.json)
-
-Lineage tracking
-
-Explainability endpoints (/models/explain, /models/lineage)
-
-Auto-loads the latest trained model and exposes prediction APIs
-
-4. CLI Mission Console
-
-Terminal-based “Mission Control” for planetary analysis
-
-Displays:
-
-Prediction summary
-
-Habitability index
-
-Missing-data diagnostics
-
-Dataset provenance
-
-🪐 Example Output
-
-## 🧠 Summary:
-   BD+20 2457 b is predicted as class 1 with confidence 0.77.
-   Top influencing factors: feature_1, feature_0.
-   Habitability index: 0.00 — unlikely to support Earth-like life.
-
-## 🧩 Diagnostics:
-   Missing or incomplete data for fields:
-   discovery_year, radius_earth, host_star.temperature.
-   Default estimates were used where possible.
-
-## 🧬 Architecture
-Layer	Description
-Data	NASA Exoplanet Archive + Open Exoplanet Catalogue
-Model	Scikit-learn classifier with explainability
-Backend	FastAPI service exposing /models, /planets, /explain
-Interface	CLI console + REST API
-Storage	Local model registry (models/artifacts/registry.json)
+- `ml/app/main.py`: FastAPI app
+- `ml/app/routes/planets.py`: planet catalog and metadata endpoints
+- `ml/app/routes/chat.py`: natural-language catalog chat
+- `ml/app/routes/datasets.py`: custom dataset upload and preview endpoints
+- `ml/app/system/planet_knowledge.py`: source merging and habitability helpers
+- `ml/app/system/update_datasets.py`: dataset refresh utility
+- `app/cli/cli_explain.py`: interactive CLI interface
+- `Makefile`: local run commands
 
 ## Quick Start
-## 1. Clone the Repository
-git clone https://github.com/TangoisdownHQ/TID-AD-ASTRA.git
-cd TID-AD-ASTRA/ml
 
-## 2. Set Up Environment
+1. Create the virtualenv in `ml/.venv`.
+2. Install dependencies:
+
+```bash
+cd ml
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+```
 
-## 3. Run the Backend
-make run
+3. From the repo root, start the backend:
 
-## 4. Test the Explainability API
-curl -X POST "http://127.0.0.1:8000/models/explain" \
+```bash
+make run-api
+```
+
+4. In a second terminal, launch the CLI:
+
+```bash
+make cli-explain
+```
+
+5. In the CLI, choose either:
+
+- `Analyze planet` for the original select-and-report flow
+- `Chat with catalog` for natural-language search, compare, and planet lookup
+- `Upload custom dataset` to send a CSV to the backend
+- `Browse uploaded datasets` to preview and sort uploaded CSV files
+
+6. Smoke-test the catalog:
+
+```bash
+curl http://127.0.0.1:8080/planets/all?limit=5
+curl "http://127.0.0.1:8080/planets/info?name=Kepler-442b"
+curl "http://127.0.0.1:8080/planets/search?query=kepler"
+curl -X POST http://127.0.0.1:8080/chat/ask \
   -H "Content-Type: application/json" \
-  -d '{"planet_name":"Kepler-442b","features":[]}' | jq
+  -d '{"message":"compare TOI-700 e vs Kepler-1649 b","limit":5}'
+curl -X POST http://127.0.0.1:8080/datasets/upload \
+  -F "file=@/absolute/path/to/your_planets.csv"
+```
 
-5. Launch the Mission Console
-make run-console
+## Data Refresh
 
+Refresh the local CSV catalog cache with:
 
- ## Add Your Own Datasets
-TID-AD-ASTRA supports open exploration — upload your own exoplanet datasets, telescope data, or simulated planetary environments.
+```bash
+cd ml
+.venv/bin/python -m app.system.update_datasets
+```
 
-1. Upload CSV Files
+Runtime behavior:
 
-Place your dataset in:
+- on app startup, the backend checks whether the catalog refresh is older than 6 hours
+- if the cache is stale or missing, it refreshes before serving users
+- after startup, the scheduler rechecks every 6 hours and refreshes again when needed
 
-ml/app/data/uploads/
-└── your_exoplanet_data.csv
+You can change the threshold with:
 
+```bash
+export DATA_REFRESH_INTERVAL_HOURS=6
+```
 
-## CSV Schema (flexible, missing values handled automatically):
+## Custom Dataset Uploads
 
+Users can upload their own CSV files and sort through them from the CLI.
 
-Column	Description
-planet_name	Planet identifier
-mass_earth	Mass (in Earth masses)
-radius_earth	Radius (in Earth radii)
-orbital_period_days	Orbital period
-semi_major_axis_au	Semi-major axis
-equilibrium_temperature_k	Temperature (K)
-eccentricity	Orbital eccentricity
-discovery_year	Discovery year
-distance_from_earth_ly	Distance (light-years)
-host_star_temperature	Star temperature (K)
-host_star_spectral_type	Star type (e.g., G2V)
+CLI flow:
 
+- choose `Upload custom dataset`
+- provide the path to a local `.csv`
+- preview the uploaded dataset
+- choose `Browse uploaded datasets` to sort preview rows by a selected column
 
-## 2. Fetch Data Automatically
-python fetch_data.py --source nasa
-python fetch_data.py --source open
+API endpoints:
 
+- `POST /datasets/upload`
+- `GET /datasets/uploads`
+- `GET /datasets/preview?filename=...&sort_by=...&ascending=false`
 
-## 3. Train a Model on Custom Data
-python -m app.models.classifier --train ml/app/data/uploads/your_exoplanet_data.csv
+Uploaded CSVs are stored in `ml/app/data/uploads/` and are also picked up by the training pipeline.
 
- 
- ## Dataset Sources
-Source	Description
-NASA Exoplanet Archive
-	Official exoplanet dataset
-Open Exoplanet Catalogue
-	Community-curated planetary data
+## 🌐 External Data Sources
 
+| Source | Purpose |
+|--------|---------|
+| NASA Exoplanet Archive | Primary exoplanet parameters and discovery metadata |
+| Open Exoplanet Catalogue | Community-maintained supplemental planet records |
+| AstroML dataset | Additional exoplanet tabular reference data |
+| NASA KOI fallback | Local fallback when richer catalogs are unavailable |
 
-## Technology Stack
-Category	Technology
-Language	Python 3.11
-Framework	FastAPI
-ML Library	Scikit-learn
-Explainability	SHAP / Feature Importance
-Data Layer	CSV + JSON registries
-Interface	CLI (Rich-based) + REST API
+## What Changed For Multi-Source Support
 
+- The backend now merges NASA, OEC, KOI, and AstroML files through one metadata layer.
+- `/planets/all` returns de-duplicated records across sources instead of reading only one dataset.
+- `/planets/info` and `/planets/search` now understand both NASA-style and OEC-style column names.
+- Dataset refresh now includes AstroML alongside NASA and OEC.
+- `/chat/ask` adds deterministic natural-language search, info, compare, and ranking over the catalog.
+- The CLI now includes a chat mode that can answer catalog questions and then jump into full planet analysis.
+- Chat sessions now support follow-up context, result references like `tell me about the second result`, and pagination with `next`, `prev`, or `page 2`.
+- Optional OpenAI-enhanced answers can be enabled from the CLI when `OPENAI_API_KEY` is configured.
 
-## 🌍 Vision
+## Optional OpenAI Answer Layer
 
-TID-AD-ASTRA is a foundation for autonomous, explainable AI agents that can:
+If you want the chat responses rewritten into a more conversational answer style on top of the deterministic catalog results, set:
 
-Reason adaptively about planetary data across star systems
+```bash
+export OPENAI_API_KEY=your_key_here
+export OPENAI_MODEL=gpt-5.4-mini
+```
 
-Integrate with future NASA APIs and sensors
+The app still performs search, filtering, compare logic, and pagination locally first. OpenAI is only used to rewrite the structured result into a cleaner answer when enabled.
 
-Support real-time decision support for interplanetary logistics
+## More Data Sources To Add Next
 
+The best next sources are official mission archives with complementary schemas:
 
-## 🚀 Future Enhancements
-🧠 AI & Modeling
+- NASA Exoplanet Archive: https://exoplanetarchive.ipac.caltech.edu/
+- ESA Gaia Archive and Gaia user services: https://www.cosmos.esa.int/web/gaia-users/register
+- JPL Small-Body Database API: https://ssd-api.jpl.nasa.gov/doc/cad.html
+- MAST mission archives: https://archive.stsci.edu/
 
-Expand models with neural networks and ensemble systems
+Recommended design:
 
-Add SHAP visual dashboards for interpretability
+- keep exoplanets and Solar System bodies as separate source families
+- use Gaia and MAST as enrichment layers, not replacements for the planet catalog
+- keep uploaded user CSVs isolated from curated source files so provenance stays clear
 
-Enable real-time inference from streaming telemetry
+## GitHub Push Checklist
 
+Before pushing, verify:
 
-## 🛰️ Data & Integration
+- generated model artifacts, caches, logs, and awareness state are not tracked
+- the app can refresh datasets at startup instead of relying on committed snapshots
+- `OPENAI_API_KEY` is optional and not committed
 
-Automate synchronization with NASA’s live API
+Standard push flow:
 
-Merge data from multiple observatories (Kepler, TESS, Gaia)
-
-Visualize data provenance with interactive lineage graphs
-
-
-## 🪐 Interface & Visualization
-
-Build a web-based Mission Console with dynamic dashboards
-
-Support drag-and-drop dataset uploads
-
-Add 3D planetary system visualizations (using Three.js + NASA JPL data)
-
-
-## ☁️ Deployment & Scale
-
-Containerize via Docker and deploy on Fly.io or Kubernetes
-
-Add secure API keys and user roles for collaboration
-
-Implement automated retraining and model versioning pipelines
-
-
-## 🧬 Long-Term Vision
-
-Develop an autonomous science agent capable of reading research papers, updating models, and proposing new exploration targets
-
-Use generative AI to simulate unseen planetary systems
-
-Integrate with spacecraft telemetry for live adaptive AI analytics
-
-“To the stars — and beyond the noise.” 🌠
-
-
-##  Team TangoisdownHQ
-Role	Name / Handle	Focus
-Founder & Engineer	@TangoisdownHQ
-Cybersecurity, AI Infrastructure, Explainability, System Design
-
-
-## 🛰️ Contact
-
-💻 GitHub: TangoisdownHQ
-
-🌐 Live Demo: https://tid-adastra.fly.dev
-
-
-## 🏁 Submission Info
-Field	Value
-Region	NASA Space Apps Challenge 2025
-Team Name	TangoisdownHQ
-Project	TID-AD-ASTRA
-
-
-## ⚡ License
-This project is open-source under the MIT License.
-NASA datasets and related content are used under the NASA Open Data Policy.
-
-## "TID-AD-ASTRA — decoding the universe, one planet at a time & beyond the noise" 🌌
+```bash
+git status
+git commit -m "Your commit message"
+git push origin main
+```

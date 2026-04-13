@@ -4,24 +4,28 @@ import json
 import pandas as pd
 import numpy as np
 import hashlib
-import shap
 import logging
+import xgboost as xgb
 from xgboost import XGBClassifier
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 from app.data.prep import load_kepler_dataset
 from pathlib import Path
 from datetime import datetime
-from app.system.selfaware import update_awareness_state, AWARENESS_FILE  # Awareness tracker
+from app.system.selfaware import update_awareness_state, AWARENESS_FILE
 from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import train_test_split
-from app.system.planet_knowledge import get_planet_info, compute_habitability
-from app.models.utils import load_latest_model, get_feature_names, get_model_hash
+from app.system.planet_knowledge import (
+    get_planet_info,
+    compute_habitability_index,
+    narrative_summary,
+)
+from app.models.utils import load_latest_model, get_feature_names
 
 # =========================================================
 # 🧾 Logging Setup
 # =========================================================
 LOG_DIR = Path(__file__).resolve().parents[2] / "logs"
-LOG_DIR.mkdir(exist_ok=True)
+LOG_DIR.mkdir(parents=True, exist_ok=True)
 LOG_FILE = LOG_DIR / "explain.log"
 
 logging.basicConfig(
@@ -31,8 +35,11 @@ logging.basicConfig(
 )
 
 def log_event(message: str):
-    """Helper to log events to both console and file."""
     print(message)
+    logging.info(message)
+
+
+def log_debug(message: str):
     logging.info(message)
 
 
@@ -42,13 +49,12 @@ def log_event(message: str):
 ARTIFACT_DIR = Path(__file__).resolve().parents[2] / "models" / "artifacts"
 ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
 REGISTRY_FILE = ARTIFACT_DIR / "registry.json"
-DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 
 
 # =========================================================
 # 🔍 Dataset Selection
 # =========================================================
-def get_latest_dataset() -> tuple[str, Path]:
+def get_latest_dataset():
     if AWARENESS_FILE.exists():
         try:
             with open(AWARENESS_FILE, "r") as f:
@@ -75,38 +81,31 @@ def train_model():
 
     if dataset_path and dataset_path.exists():
         try:
-            df = pd.read_csv(dataset_path)
+            df = pd.read_csv(dataset_path, comment="#", on_bad_lines="skip")
             df = df.dropna(axis=0, thresh=int(0.5 * len(df.columns)))
 
-            X = df.select_dtypes(include=[np.number])
-            y = df.iloc[:, -1]
+            X = df.select_dtypes(include=[np.number]).dropna()
+            y = X.iloc[:, -1]
+            X = X.iloc[:, :-1]
 
-            if y.dtype == "object" or isinstance(y.iloc[0], str):
+            if y.dtype == "object":
                 le = LabelEncoder()
                 y = le.fit_transform(y)
-                label_map = {str(k): int(v) for k, v in zip(le.classes_, le.transform(le.classes_))}
-                log_event(f"🧠 Encoded label classes: {label_map}")
-                update_awareness_state(label_mapping=label_map)
+                update_awareness_state(label_mapping=dict(zip(le.classes_, le.transform(le.classes_))))
 
             X_train, X_test, y_train, y_test = train_test_split(
                 X, y, test_size=0.2, random_state=42
             )
 
-            log_event(f"🧩 Training complete — model expects {X.shape[1]} features: {list(X.columns)}")
             update_awareness_state(feature_names=list(X.columns))
 
         except Exception as e:
-            log_event(f"⚠️ Failed to load external dataset: {e}")
+            log_event(f"⚠️ External dataset failed: {e}")
             df, X_train, X_test, y_train, y_test, scaler, source_type, dataset_path = load_kepler_dataset()
 
     else:
-        data = load_kepler_dataset()
-        if not isinstance(data, tuple) or len(data) < 8:
-            raise ValueError("❌ Expected full dataset tuple from load_kepler_dataset, got something else.")
-
-        df, X_train, X_test, y_train, y_test, scaler, source_type, dataset_path = data
-        log_event(f"🧩 Training complete — model expects {X_train.shape[1]} features (Kepler fallback).")
-        update_awareness_state(feature_names=list(X_train.columns) if hasattr(X_train, "columns") else [])
+        df, X_train, X_test, y_train, y_test, scaler, source_type, dataset_path = load_kepler_dataset()
+        update_awareness_state(feature_names=list(range(X_train.shape[1])))
 
     update_awareness_state(
         last_trained_dataset=str(dataset_path),
@@ -119,21 +118,24 @@ def train_model():
         max_depth=5,
         learning_rate=0.05,
         subsample=0.8,
-        eval_metric="mlogloss",
-        use_label_encoder=False
+        eval_metric="mlogloss"
     )
 
     model.fit(X_train, y_train)
     y_pred = model.predict(X_test)
 
-    average_type = "macro" if len(np.unique(y)) > 2 else "binary"
+    unique_classes = np.unique(y_train)
+    average_type = "macro" if len(unique_classes) > 2 else "binary"
 
     acc = float(accuracy_score(y_test, y_pred))
     f1 = float(f1_score(y_test, y_pred, average=average_type))
     prec = float(precision_score(y_test, y_pred, average=average_type))
     rec = float(recall_score(y_test, y_pred, average=average_type))
 
-    dataset_hash = hashlib.md5(pd.util.hash_pandas_object(df, index=True).values).hexdigest()[:8]
+    dataset_hash = hashlib.md5(
+        pd.util.hash_pandas_object(df, index=True).values
+    ).hexdigest()[:8]
+
     model_name = f"model_{dataset_hash}.joblib"
     model_path = ARTIFACT_DIR / model_name
     joblib.dump(model, model_path)
@@ -147,16 +149,13 @@ def train_model():
         "dataset_path": str(dataset_path),
     }
 
+    registry = []
     if REGISTRY_FILE.exists():
         try:
             with open(REGISTRY_FILE, "r") as f:
-                registry = json.load(f)
-            if not isinstance(registry, list):
-                registry = [registry]
-        except json.JSONDecodeError:
+                registry = json.load(f) or []
+        except Exception:
             registry = []
-    else:
-        registry = []
 
     registry.append(entry)
 
@@ -172,207 +171,117 @@ def train_model():
     log_event(f"✅ Model saved: {model_path}")
     log_event(f"✅ Registry updated: {REGISTRY_FILE}")
 
-    return {
-        "accuracy": acc,
-        "f1": f1,
-        "precision": prec,
-        "recall": rec,
-        "model_hash": dataset_hash,
-        "source": source_type
-    }
+    return entry
 
 
 # =========================================================
 # 🔮 PREDICTION
 # =========================================================
-def predict(features: list[float]):
-    if not REGISTRY_FILE.exists():
-        raise FileNotFoundError("❌ No registry.json found — train a model first.")
-
-    with open(REGISTRY_FILE, "r") as f:
+def predict(features):
+    with open(REGISTRY_FILE) as f:
         registry = json.load(f)
 
-    if not registry:
-        raise ValueError("❌ Registry is empty — train a model first.")
-
-    latest_entry = registry[-1]
-    model_path = Path(latest_entry["path"])
-    model_hash = latest_entry["hash"]
-
-    if not model_path.exists():
-        raise FileNotFoundError(f"❌ Model file not found: {model_path}")
-
-    model = joblib.load(model_path)
-
-    expected_features = None
-    if AWARENESS_FILE.exists():
-        try:
-            with open(AWARENESS_FILE, "r") as f:
-                state = json.load(f)
-                expected_features = state.get("feature_names", None)
-        except json.JSONDecodeError:
-            log_event("⚠️ Awareness file unreadable, skipping feature validation.")
-
-    if expected_features:
-        expected_len = len(expected_features)
-        if len(features) != expected_len:
-            raise ValueError(
-                f"❌ Feature shape mismatch — expected {expected_len} features "
-                f"({expected_features[:5]}...) but got {len(features)}."
-            )
+    latest = registry[-1]
+    model = joblib.load(latest["path"])
 
     X = np.array(features).reshape(1, -1)
     pred = model.predict(X)[0]
     confidence = float(np.max(model.predict_proba(X)))
 
     return {
-        "model": model_hash,
+        "model": latest["hash"],
         "predicted_label": int(pred),
         "confidence": confidence,
-        "expected_features": expected_features or "unknown"
+    }
+
+
+def _feature_labels(count: int):
+    feature_names = get_feature_names() or []
+    labels = []
+    for i in range(count):
+        if i < len(feature_names):
+            value = feature_names[i]
+            labels.append(str(value))
+        else:
+            labels.append(f"feature_{i}")
+    return labels
+
+
+def _native_xgb_contributions(model, X, labels):
+    booster = model.get_booster()
+    contribs = booster.predict(
+        xgb.DMatrix(X, feature_names=[f"f{i}" for i in range(X.shape[1])]),
+        pred_contribs=True,
+        validate_features=False,
+    )
+    contrib_array = np.abs(np.asarray(contribs)[0][:-1])  # drop bias term
+    top_idx = np.argsort(contrib_array)[::-1][:5]
+    return {
+        labels[i]: float(contrib_array[i])
+        for i in top_idx
     }
 
 
 # =========================================================
 # 🧠 EXPLANATION
 # =========================================================
-def explain_prediction(features: list[float], planet_name: str | None = None):
+def explain_prediction(features, planet_name=None):
     model, meta = load_latest_model()
-    feature_names = get_feature_names()
-    log_event("\n🚀 [Explain] Starting planetary prediction explanation...")
 
-    # =========================================================
-    # 🧩 Validate and align input
-    # =========================================================
     expected_n = getattr(model, "n_features_in_", len(features))
-    if len(features) < expected_n:
-        diff = expected_n - len(features)
-        log_event(f"⚠️ [Align] Padding input with {diff} zeros → expected {expected_n} features.")
-        features = features + [0.0] * diff
-    elif len(features) > expected_n:
-        log_event(f"⚠️ [Align] Truncating {len(features) - expected_n} extra features → expected {expected_n}.")
-        features = features[:expected_n]
-    else:
-        log_event(f"✅ [Align] Feature vector length matches model ({expected_n} features).")
+    features = (features + [0.0] * expected_n)[:expected_n]
+    labels = _feature_labels(expected_n)
 
-    X = np.array(features).reshape(1, -1)
+    # Always force numeric
+    X = np.asarray(features, dtype=np.float32).reshape(1, -1)
 
-    # =========================================================
-    # 🔮 Prediction
-    # =========================================================
-    log_event("🧠 [Predict] Running model inference...")
     pred = model.predict(X)[0]
     confidence = float(np.max(model.predict_proba(X)))
-    log_event(f"✅ [Predict] Prediction complete — Class: {pred}, Confidence: {confidence:.3f}")
 
     # =========================================================
-    # 🌌 SHAP Explainability (safe + robust)
+    # 🔍 Native XGBoost contributions with quiet fallback
     # =========================================================
-    log_event("🌌 [Explain] Computing SHAP feature importances...")
+    top_features = {}
+
     try:
-        explainer = shap.Explainer(model)
-        shap_values = explainer(X)
-
-        # Handle possible multi-dimensional SHAP outputs
-        if isinstance(shap_values.values, list):
-            shap_array = np.abs(shap_values.values[0])
-        elif shap_values.values.ndim == 3:
-            shap_array = np.abs(shap_values.values).mean(axis=(0, 1))  # average over classes/samples
-        elif shap_values.values.ndim == 2:
-            shap_array = np.abs(shap_values.values[0])
-        else:
-            shap_array = np.abs(shap_values.values)
-
-        feature_importances = np.array(shap_array).flatten()
-
-        # Sanity check for feature name alignment
-        if not feature_names or len(feature_names) != len(feature_importances):
-            log_event("⚠️ [Explain] Feature name/importance mismatch — using generic indices.")
-            feature_names = [f"feature_{i}" for i in range(len(feature_importances))]
-
-        top_idx = np.argsort(feature_importances)[::-1][:5]
-        top_features = {
-            str(feature_names[int(i)]): float(feature_importances[int(i)]) for i in top_idx
-        }
-
-        log_event(f"🔬 [Explain] Top features: {list(top_features.keys())}")
+        top_features = _native_xgb_contributions(model, X, labels)
     except Exception as e:
-        log_event(f"❌ [Explain] SHAP computation failed: {e}")
-        top_features = {}
+        log_debug(f"Native XGBoost contribution explanation failed: {e}")
+
+        try:
+            booster = model.get_booster()
+            scores = booster.get_score(importance_type="gain")
+
+            sorted_feats = sorted(scores.items(), key=lambda x: x[1], reverse=True)[:5]
+            top_features = {
+                labels[int(k[1:])] if k.startswith("f") and int(k[1:]) < len(labels) else k: float(v)
+                for k, v in sorted_feats
+            }
+
+        except Exception as e2:
+            log_debug(f"XGBoost gain fallback failed: {e2}")
+            top_features = {}
 
     # =========================================================
-    # 🌍 Planetary Metadata
+    # 🌍 Planet knowledge layer
     # =========================================================
-    log_event("🪐 [Planet] Retrieving planetary metadata...")
-
     try:
         planet_info = get_planet_info(planet_name) if planet_name else {}
-        if not isinstance(planet_info, dict) or planet_info is None:
-            planet_info = {}
     except Exception as e:
-        log_event(f"❌ [Planet] Error retrieving metadata: {e}")
+        log_event(f"⚠️ Planet info lookup failed: {e}")
         planet_info = {}
 
-    if planet_info:
-        log_event(f"✅ [Planet] Found data for {planet_info.get('planet_name', planet_name)}.")
-    else:
-        log_event(f"⚠️ [Planet] No metadata found for {planet_name} — continuing with defaults.")
+    habitability_index = compute_habitability_index(planet_info)
+    narrative = narrative_summary(planet_info)
 
-    distance = planet_info.get("distance_from_earth_ly", "Unknown")
-    host_star = planet_info.get("host_star", {})
-
-    
-    # =========================================================
-    # 🌡️ Habitability
-    # =========================================================
-    log_event("🧬 [Habitability] Computing habitability index...")
-    try:
-        temp = features[10] if len(features) > 10 else 288
-        radius = features[2]
-        semimajoraxis = features[4]
-        ecc = features[5]
-        habitability_index = compute_habitability(temp, radius, semimajoraxis, ecc)
-        log_event(f"✅ [Habitability] Habitability Index: {habitability_index:.3f}")
-    except Exception as e:
-        log_event(f"❌ [Habitability] Failed to compute index: {e}")
-        habitability_index = 0.0
-
-    # =========================================================
-    # 🧭 Contextual Reasoning
-    # =========================================================
-    reasons = []
-    if habitability_index > 0.7:
-        reasons.append("Stable orbital and thermal conditions conducive to life.")
-    elif habitability_index > 0.4:
-        reasons.append("Moderate habitability — potential for microbial or extremophile life.")
-    else:
-        reasons.append("Extreme environment; unlikely to support Earth-like life.")
-
-    if host_star.get("temperature") and host_star["temperature"] < 6000:
-        reasons.append("Host star emits balanced radiation — supports stable climates.")
-    if distance != "Unknown" and isinstance(distance, (int, float)) and distance < 50:
-        reasons.append("Close proximity to Earth makes observation easier.")
-    if host_star.get("spectral_type"):
-        reasons.append(f"Host star spectral type {host_star['spectral_type']} affects radiation balance.")
-
-    reasoning = " ".join(reasons)
-    log_event("🧩 [Reasoning] " + reasoning)
-
-    # =========================================================
-    # 🧾 Summary
-    # =========================================================
     summary = (
         f"{planet_name or 'This planet'} is predicted as class {int(pred)} "
         f"with confidence {confidence:.2f}. "
-        f"Top influencing factors include {', '.join(list(top_features.keys())[:3]) or 'N/A'}. "
-        f"Habitability index: {habitability_index:.2f}. {reasoning}"
+        f"Top features: {', '.join(list(top_features.keys())[:3]) or 'N/A'}. "
+        f"Habitability index: {habitability_index:.2f}. "
+        f"{narrative}"
     )
 
-    log_event("✅ [Explain] Explanation complete.\n")
-
-    # =========================================================
-    # 📦 Return Structured Response
-    # =========================================================
     return {
         "model": meta.get("hash"),
         "dataset_source": meta.get("dataset_source"),
@@ -384,3 +293,18 @@ def explain_prediction(features: list[float], planet_name: str | None = None):
         "summary": summary,
     }
 
+# =========================================================
+# 🖥️ CLI ENTRYPOINT
+# =========================================================
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Train TID-AD-ASTRA model")
+    parser.add_argument("--train", type=str, help="Path to dataset CSV")
+    args = parser.parse_args()
+
+    if args.train:
+        log_event("🧠 CLI training invoked")
+        log_event(f"📁 Dataset path: {args.train}")
+        metrics = train_model()
+        log_event(f"📊 Metrics: {metrics}")

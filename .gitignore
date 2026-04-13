@@ -1,6 +1,7 @@
 # Python virtual environment
 .venv/
 __pycache__/
+*.pyc
 
 # Node modules
 node_modules/
@@ -15,10 +16,24 @@ ui/node_modules/
 *.bin
 *.joblib
 
+# Generated model and app state
+app/models/artifacts/
+ml/app/models/artifacts/
+ml/models/artifacts/
+ml/models_artifacts/
+ml/app/system/awareness_state.json
+ml/logs/
+ml/app/data/uploads/
+ml/app/data/nasa_exoplanets.csv
+ml/app/data/open_exoplanet_catalogue.csv
+ml/app/data/astroml_exoplanets.csv
+ml/app/data/nasa_2025-10-06.csv
+ml/data/
+
 # OS / IDE / cache
 .DS_Store
 *.log
 *.tmp
 *.swp
 *.zip
-
+.~lock*

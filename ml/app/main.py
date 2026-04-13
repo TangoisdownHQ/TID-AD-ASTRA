@@ -1,3 +1,4 @@
+import time
 from fastapi import FastAPI, UploadFile, File
 from pathlib import Path
 from threading import Thread
@@ -9,7 +10,7 @@ import joblib
 # =========================================================
 # 🧩 INTERNAL IMPORTS
 # =========================================================
-from app.routes import models, system, planets   
+from app.routes import chat, datasets, models, system, planets
 from app.models.classifier import predict, train_model
 from app.schemas import PredictRequest, TrainResponse
 from app.system.auto_retrain import auto_retrain
@@ -17,13 +18,16 @@ from app.system.scheduler import start_scheduler_background
 from app.system.fetch_agent import run_all_fetchers
 from app.system.watcher import watch_for_new_data
 from app.system.selfaware import AWARENESS_FILE
-from app.system.update_datasets import main as refresh_datasets
+from app.system.update_datasets import (
+    DATA_REFRESH_INTERVAL_HOURS,
+    refresh_if_stale,
+)
 
 
 # =========================================================
 # 📂 DIRECTORIES
 # =========================================================
-UPLOAD_DIR = Path(__file__).resolve().parents[1] / "data" / "uploads"
+UPLOAD_DIR = Path(__file__).resolve().parent / "data" / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 
@@ -50,8 +54,13 @@ def health():
 # =========================================================
 @app.post("/train", response_model=TrainResponse)
 def train():
-    metrics = train_model()
-    return metrics
+    result = train_model()
+
+    metrics = result.get("metrics", {})
+    return {
+        "accuracy": metrics.get("accuracy"),
+        "f1": metrics.get("f1"),
+    }
 
 
 # =========================================================
@@ -66,11 +75,13 @@ def make_prediction(req: PredictRequest):
 # 📦 ROUTE INCLUSION
 # =========================================================
 from app.routes import models as models_routes
-from app.routes import system, planets
+from app.routes import chat, datasets, system, planets
 
 app.include_router(models.router, prefix="/models", tags=["models"])   # ✅ enables /models/explain
 app.include_router(system.router, prefix="/system", tags=["system"])
 app.include_router(planets.router, prefix="/planets", tags=["planets"])
+app.include_router(chat.router, prefix="/chat", tags=["chat"])
+app.include_router(datasets.router, prefix="/datasets", tags=["datasets"])
 
 
 # =========================================================
@@ -182,9 +193,15 @@ def start_autonomous_systems():
     - Scheduler
     - Fetch agent
     - Dataset watcher
-    - Local dataset refresh (non-blocking)
+    - Startup freshness check before use
     """
     print("🧩 [Startup] Initializing autonomous systems...")
+
+    # 0️⃣ Ensure local catalog freshness before serving users
+    try:
+        refresh_if_stale(max_age_hours=DATA_REFRESH_INTERVAL_HOURS)
+    except Exception as e:
+        print(f"⚠️ Startup dataset refresh check failed: {e}")
 
     # 1️⃣ Scheduler
     start_scheduler_background()
@@ -202,28 +219,20 @@ def start_autonomous_systems():
     # 3️⃣ Dataset Watcher
     Thread(target=watch_for_new_data, kwargs={"interval": 3600}, daemon=True).start()
 
-    # 4️⃣ Local Dataset Refresh
-    def init_local_refresh():
-        print("🌍 Checking local dataset freshness...")
+    if AWARENESS_FILE.exists():
         try:
-            refresh_datasets()
-
-            if AWARENESS_FILE.exists():
-                with open(AWARENESS_FILE, "r") as f:
-                    state = json.load(f)
-                    last_refresh = state.get("last_dataset_refresh", "unknown")
-                    sources = state.get("last_refresh_sources", {})
-                    print("\n🪶 [Local Dataset Summary]")
-                    print(f"   Last Refresh: {last_refresh}")
-                    for name, info in sources.items():
-                        rows = info.get("rows", "—")
-                        path = info.get("path", "—")
-                        print(f"   - {name}: {rows} rows ({path})")
-                    print("🧠 Awareness state updated.\n")
+            with open(AWARENESS_FILE, "r") as f:
+                state = json.load(f)
+                last_refresh = state.get("last_dataset_refresh", "unknown")
+                sources = state.get("last_refresh_sources", {})
+                print("\n🪶 [Local Dataset Summary]")
+                print(f"   Last Refresh: {last_refresh}")
+                for name, info in sources.items():
+                    rows = info.get("rows", "—")
+                    path = info.get("path", "—")
+                    print(f"   - {name}: {rows} rows ({path})")
+                print("🧠 Awareness state updated.\n")
         except Exception as e:
-            print(f"⚠️ Local dataset refresh skipped: {e}")
-
-    Thread(target=init_local_refresh, daemon=True).start()
+            print(f"⚠️ Failed to read local dataset summary: {e}")
 
     print("✅ Autonomous agents initialized.")
-
