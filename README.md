@@ -53,6 +53,8 @@ pip install -r requirements.txt
 make run-api
 ```
 
+On first run, if no local model artifact exists yet, the backend trains a starter model automatically before serving explainability features.
+
 4. In a second terminal, launch the CLI:
 
 ```bash
@@ -98,6 +100,23 @@ You can change the threshold with:
 
 ```bash
 export DATA_REFRESH_INTERVAL_HOURS=6
+```
+
+## First-Run Model Training
+
+Fresh clones do not ship with committed model artifacts.
+
+Runtime behavior:
+
+- when the backend starts, it checks for a local trained model
+- if none exists, it trains a starter model automatically
+- after that, explainability and comparison features are available without extra setup
+
+If you want to train manually instead:
+
+```bash
+cd ml
+.venv/bin/python -m app.models.classifier --train ml/app/data/koi_fallback.csv
 ```
 
 ## Custom Dataset Uploads

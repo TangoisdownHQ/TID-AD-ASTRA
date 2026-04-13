@@ -37,6 +37,33 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 app = FastAPI(title="TID-AD-ASTRA API", version="0.5.1")
 
 
+def ensure_model_ready():
+    """
+    Train a starter model on first run if no local model artifacts exist yet.
+    This keeps clone-and-run behavior usable without manual training.
+    """
+    from app.models.classifier import REGISTRY_FILE
+
+    if REGISTRY_FILE.exists():
+        try:
+            with open(REGISTRY_FILE, "r") as f:
+                registry = json.load(f) or []
+            if registry:
+                latest_path = Path(registry[-1].get("path", ""))
+                if latest_path.exists():
+                    print("🧠 Existing model artifact found. Skipping starter training.")
+                    return
+        except Exception as e:
+            print(f"⚠️ Failed to inspect model registry: {e}")
+
+    print("🧠 No local model found. Training starter model now...")
+    try:
+        result = train_model()
+        print(f"✅ Starter model ready: {result.get('path', 'unknown path')}")
+    except Exception as e:
+        print(f"⚠️ Starter model training failed: {e}")
+
+
 # =========================================================
 # 🧠 SYSTEM HEALTH
 # =========================================================
@@ -202,6 +229,9 @@ def start_autonomous_systems():
         refresh_if_stale(max_age_hours=DATA_REFRESH_INTERVAL_HOURS)
     except Exception as e:
         print(f"⚠️ Startup dataset refresh check failed: {e}")
+
+    # 0.5️⃣ Ensure first-run model availability before users hit explainability
+    ensure_model_ready()
 
     # 1️⃣ Scheduler
     start_scheduler_background()
