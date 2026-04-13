@@ -60,7 +60,11 @@ def fetch_planet_catalog():
 
 def fetch_planet_info(planet_name: str):
     try:
-        resp = requests.get(API_PLANET_INFO, params={"name": planet_name}, timeout=10)
+        resp = requests.get(
+            API_PLANET_INFO,
+            params={"name": planet_name, "include_external": "true"},
+            timeout=30,
+        )
         if resp.status_code == 200:
             return resp.json()
         return {"planet_name": planet_name}
@@ -168,7 +172,98 @@ def display_report(data: dict, planet_info: dict):
     info_table.add_row("Discovery Method", str(planet_info.get("discovery_method", "—")))
     info_table.add_row("Host Star", str(planet_info.get("host_star", "—")))
     info_table.add_row("Source", str(planet_info.get("source", "—")))
+    info_table.add_row("Source Family", str(planet_info.get("source_family", "—")))
+    info_table.add_row("Proximity", str(planet_info.get("proximity_category", "—")))
     console.print(info_table)
+
+    habitability_signals = planet_info.get("habitability_signals") or []
+    if habitability_signals:
+        console.rule("[magenta]Habitability Signals[/magenta]")
+        for signal in habitability_signals:
+            console.print(f"• {signal}")
+
+    system_context = planet_info.get("system_context") or {}
+    neighbors = system_context.get("neighbors") or []
+    if system_context:
+        console.rule("[magenta]System Context[/magenta]")
+        console.print(
+            f"Known planets around host star: {system_context.get('planet_count', '—')}"
+        )
+        if neighbors:
+            neighbor_table = Table(show_header=True, header_style="bold magenta")
+            neighbor_table.add_column("Neighbor")
+            neighbor_table.add_column("Type")
+            neighbor_table.add_column("Habitability", justify="right")
+            neighbor_table.add_column("Distance (ly)", justify="right")
+            for neighbor in neighbors[:5]:
+                score = neighbor.get("habitability_score")
+                neighbor_table.add_row(
+                    str(neighbor.get("planet_name", "—")),
+                    str(neighbor.get("planet_type", "—")),
+                    f"{score:.3f}" if score is not None else "—",
+                    str(neighbor.get("distance_ly", "—")),
+                )
+            console.print(neighbor_table)
+
+    travel_estimates = planet_info.get("travel_estimates_years") or {}
+    if travel_estimates:
+        console.rule("[magenta]Travel Time From Earth[/magenta]")
+        travel_table = Table(show_header=True, header_style="bold magenta")
+        travel_table.add_column("Reference Speed")
+        travel_table.add_column("Years", justify="right")
+        labels = {
+            "light_speed": "At light speed",
+            "ten_percent_light_speed": "At 10% light speed",
+            "parker_solar_probe": "At Parker Solar Probe speed",
+            "voyager_1": "At Voyager 1 speed",
+        }
+        for key, label in labels.items():
+            if key in travel_estimates:
+                travel_table.add_row(label, str(travel_estimates[key]))
+        console.print(travel_table)
+
+    external = planet_info.get("external_enrichment") or {}
+    if external:
+        console.rule("[magenta]Gaia / Mission Enrichment[/magenta]")
+        console.print(f"Enrichment status: {external.get('status', 'unknown')}")
+        gaia = external.get("gaia") or {}
+        if gaia:
+            gaia_table = Table(show_header=False, box=None)
+            gaia_table.add_row("Gaia Source ID", str(gaia.get("source_id", "—")))
+            gaia_table.add_row("Parallax (mas)", str(gaia.get("parallax_mas", "—")))
+            gaia_table.add_row("G Magnitude", str(gaia.get("g_mag", "—")))
+            gaia_table.add_row("PMRA", str(gaia.get("pmra", "—")))
+            gaia_table.add_row("PMDEC", str(gaia.get("pmdec", "—")))
+            console.print(gaia_table)
+
+        mast = external.get("mast") or {}
+        properties = mast.get("properties_excerpt") or {}
+        if properties:
+            mast_table = Table(show_header=False, box=None)
+            mast_table.add_row("Canonical Name", str(properties.get("canonicalName", "—")))
+            mast_table.add_row("Discovery Facility", str(properties.get("discoveryFacility", "—")))
+            mast_table.add_row("Orbital Period", str(properties.get("orbitalPeriod", "—")))
+            mast_table.add_row("Semi-major Axis", str(properties.get("semiMajorAxis", "—")))
+            mast_table.add_row("Star Distance", str(properties.get("starDistance", "—")))
+            mast_table.add_row("Star Teff", str(properties.get("starTeff", "—")))
+            console.print(mast_table)
+
+        missions = external.get("missions") or {}
+        for mission_key in ["kepler", "tess"]:
+            mission = missions.get(mission_key) or {}
+            if not mission:
+                continue
+            console.print(
+                f"{mission.get('mission', mission_key.title())}: "
+                f"{mission.get('candidate_count', 0)} tracked candidate events"
+            )
+            for candidate in mission.get("candidates") or []:
+                console.print(
+                    "  - "
+                    f"{candidate.get('tce_name', 'unknown')} | "
+                    f"{candidate.get('disposition', 'unknown')} | "
+                    f"period {candidate.get('period_days', '—')}"
+                )
 
     console.rule("[magenta]Feature Influence[/magenta]")
     table = Table(show_header=True, header_style="bold magenta")

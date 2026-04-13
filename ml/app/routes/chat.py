@@ -6,6 +6,7 @@ from fastapi import APIRouter
 
 from app.models.classifier import explain_prediction
 from app.schemas import ChatRequest
+from app.system.enrichment import enrich_planet_info
 from app.system.openai_chat import openai_available, render_openai_answer
 from app.system.planet_knowledge import (
     get_planet_catalog_records,
@@ -292,6 +293,7 @@ def _build_info_answer(planet_name: str, session_id: str):
             "planet": None,
         }
 
+    info = enrich_planet_info(info, include_external=True)
     explanation = _safe_explain(info["planet_name"])
     return {
         "intent": "info",
@@ -303,8 +305,8 @@ def _build_info_answer(planet_name: str, session_id: str):
 
 
 def _build_compare_answer(planet_a: str, planet_b: str, session_id: str):
-    info_a = get_planet_info(planet_a)
-    info_b = get_planet_info(planet_b)
+    info_a = enrich_planet_info(get_planet_info(planet_a), include_external=False)
+    info_b = enrich_planet_info(get_planet_info(planet_b), include_external=False)
     explanation_a = _safe_explain(planet_a)
     explanation_b = _safe_explain(planet_b)
 

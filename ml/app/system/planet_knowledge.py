@@ -38,6 +38,7 @@ COLUMN_ALIASES = {
     "planet_name": ["pl_name", "name", "kepoi_name", "planet_name"],
     "host_star": ["hostname", "host_star", "star_name"],
     "distance_pc": ["sy_dist", "system_distance", "st_dist"],
+    "mass_earth": ["pl_bmasse", "mass", "koi_mass"],
     "radius": ["pl_rade", "radius", "koi_prad"],
     "temperature": ["pl_eqt", "temperature", "koi_teq"],
     "period": ["pl_orbper", "period", "koi_period"],
@@ -286,6 +287,7 @@ def get_planet_info(planet_name: str):
 
     row = match.iloc[0]
 
+    mass_earth = _to_float(_value_from_row(row, "mass_earth"))
     radius = _to_float(_value_from_row(row, "radius"))
     temp = _to_float(_value_from_row(row, "temperature"))
     distance_pc = _to_float(_value_from_row(row, "distance_pc"))
@@ -297,6 +299,7 @@ def get_planet_info(planet_name: str):
 
     return {
         "planet_name": row.get(name_col),
+        "mass_earth": mass_earth,
         "radius": radius,
         "temperature": temp,
         "period": period,

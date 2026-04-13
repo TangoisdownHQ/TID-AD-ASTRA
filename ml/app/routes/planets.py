@@ -10,6 +10,7 @@ from app.system.planet_knowledge import (
     load_planet_data,
     search_planets,
 )
+from app.system.enrichment import enrich_planet_info
 
 router = APIRouter()
 
@@ -56,8 +57,28 @@ def ensure_dataset():
 # =========================================================
 # 🪐 /planets/info
 # =========================================================
+def sanitize_for_json(obj):
+    """Recursively remove NaN/inf values from dicts/lists for JSON safety."""
+    if isinstance(obj, dict):
+        return {k: sanitize_for_json(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [sanitize_for_json(x) for x in obj]
+    elif isinstance(obj, float):
+        if math.isnan(obj) or math.isinf(obj):
+            return None
+        return float(obj)
+    else:
+        return obj
+
+
 @router.get("/info")
-async def planet_info(name: str | None = Query(None, description="Exact planet name (optional)")):
+async def planet_info(
+    name: str | None = Query(None, description="Exact planet name (optional)"),
+    include_external: bool = Query(
+        False,
+        description="Include Gaia/MAST mission enrichment when available.",
+    ),
+):
     """
     🌌  /planets/info
     - If `?name=PlanetName` is given → return detailed planet info.
@@ -69,7 +90,7 @@ async def planet_info(name: str | None = Query(None, description="Exact planet n
         info = get_planet_info(name)
         if not info:
             raise HTTPException(status_code=404, detail=f"Planet '{name}' not found in database.")
-        return info
+        return sanitize_for_json(enrich_planet_info(info, include_external=include_external))
 
     planets = []
     df = load_planet_data()
@@ -119,20 +140,6 @@ async def planet_all(limit: int = Query(100, description="Number of planets to r
     combined = get_planet_catalog_records()
     if not combined:
         raise HTTPException(status_code=500, detail="Failed to load planet data from local sources.")
-
-    # Deep sanitize entire response
-    def sanitize_for_json(obj):
-        """Recursively remove NaN/inf values from dicts/lists for JSON safety."""
-        if isinstance(obj, dict):
-            return {k: sanitize_for_json(v) for k, v in obj.items()}
-        elif isinstance(obj, list):
-            return [sanitize_for_json(x) for x in obj]
-        elif isinstance(obj, float):
-            if math.isnan(obj) or math.isinf(obj):
-                return None
-            return float(obj)
-        else:
-            return obj
 
     safe_combined = sanitize_for_json(combined)
 

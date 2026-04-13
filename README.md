@@ -81,6 +81,7 @@ make cli-explain
 ```bash
 curl http://127.0.0.1:8080/planets/all?limit=5
 curl "http://127.0.0.1:8080/planets/info?name=Kepler-442b"
+curl "http://127.0.0.1:8080/planets/info?name=Kepler-442b&include_external=true"
 curl "http://127.0.0.1:8080/planets/search?query=kepler"
 curl "http://127.0.0.1:8080/small-bodies/lookup?query=Eros"
 curl -X POST http://127.0.0.1:8080/chat/ask \
@@ -155,6 +156,7 @@ Uploaded CSVs are stored in `ml/app/data/uploads/` and are also picked up by the
 | Open Exoplanet Catalogue | Community-maintained supplemental planet records |
 | AstroML dataset | Additional exoplanet tabular reference data |
 | NASA KOI fallback | Local fallback when richer catalogs are unavailable |
+| MAST exoplanet and Gaia services | Optional live enrichment for host-star context, Gaia crossmatch, and mission metadata |
 | JPL Small-Body Database API | Separate Solar System asteroid/comet lookup |
 
 ## What Changed For Multi-Source Support
@@ -169,6 +171,8 @@ Uploaded CSVs are stored in `ml/app/data/uploads/` and are also picked up by the
 - Optional OpenAI-enhanced answers can be enabled from the CLI when `OPENAI_API_KEY` is configured.
 - `/small-bodies/lookup` adds a separate JPL-backed mode for asteroids and comets.
 - Exoplanets and Solar System objects are now treated as separate source families.
+- `/planets/info?include_external=true` now adds local system-context enrichment plus optional live Gaia and MAST mission details.
+- Rich planet reports now include host-system neighbors, proximity category, travel-time estimates from Earth, and habitability-oriented signals.
 
 ## Optional OpenAI Answer Layer
 
@@ -181,26 +185,33 @@ export OPENAI_MODEL=gpt-5.4-mini
 
 The app still performs search, filtering, compare logic, and pagination locally first. OpenAI is only used to rewrite the structured result into a cleaner answer when enabled.
 
-## More Data Sources To Add Next
+## Gaia And MAST Enrichment
 
-The best next sources are official mission archives with complementary schemas:
+Planet detail lookups now combine local catalog data with optional live enrichment when network access is available.
+
+If the app is offline or the external APIs are unavailable, the planet detail view still works and falls back to the local merged catalog.
+
+What users now see on detailed planet views:
+
+- host-star and system-neighbor context
+- distance-based proximity labels
+- travel-time estimates from Earth at several reference speeds
+- habitability-oriented signals based on size, temperature, star type, and distance
+- Gaia DR3 crossmatch details when a match is found
+- MAST exoplanet metadata and Kepler/TESS candidate-event summaries when available
+
+Design notes:
+
+- exoplanets and Solar System bodies stay separated as different source families
+- Gaia and MAST are enrichment layers, not replacements for the merged exoplanet catalog
+- uploaded user CSVs stay isolated from curated source files so provenance stays clear
+
+Primary enrichment sources:
 
 - NASA Exoplanet Archive: https://exoplanetarchive.ipac.caltech.edu/
 - ESA Gaia Archive and Gaia user services: https://www.cosmos.esa.int/web/gaia-users/register
+- MAST mission archives and APIs: https://archive.stsci.edu/ and https://mast.stsci.edu/api/v0/
 - JPL Small-Body Database API: https://ssd-api.jpl.nasa.gov/doc/cad.html
-- MAST mission archives: https://archive.stsci.edu/
-
-Recommended design:
-
-- keep exoplanets and Solar System bodies as separate source families
-- use Gaia and MAST as enrichment layers, not replacements for the planet catalog
-- keep uploaded user CSVs isolated from curated source files so provenance stays clear
-
-Current implementation status:
-
-- implemented now: exoplanet catalog family and separate JPL small-body family
-- next enrichment target: Gaia host-star enrichment on exoplanet records
-- next mission target: MAST/Kepler/TESS enrichment for observational context and candidates
 
 ## GitHub Push Checklist
 
