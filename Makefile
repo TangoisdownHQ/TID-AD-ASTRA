@@ -7,6 +7,9 @@ API_PORT = 8080
 
 run-api:
 	@echo "🚀 Launching TID-AD-ASTRA API on port $(API_PORT)..."
+	@echo "🧯 Clearing any existing backend process on port $(API_PORT)..."
+	@pkill -f "uvicorn app.main:app" 2>/dev/null || true
+	@sleep 1
 	cd ml && .venv/bin/python -m uvicorn app.main:app --port $(API_PORT) --reload
 
 cli-explain:
@@ -15,6 +18,9 @@ cli-explain:
 
 run:
 	@echo "🚀 Initializing TID-AD-ASTRA Mission Console..."
+	@echo "🧯 Clearing any existing backend process on port $(API_PORT)..."
+	@pkill -f "uvicorn app.main:app" 2>/dev/null || true
+	@sleep 1
 	@echo "🧩 Starting backend server..."
 	cd ml && nohup .venv/bin/python -m uvicorn app.main:app --port $(API_PORT) > ../api.log 2>&1 &
 	@echo "🛰  Launching backend process and checking system heartbeat..."
@@ -46,4 +52,3 @@ clean:
 	@echo "🧹 Cleaning Python cache files and logs..."
 	@find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 	@rm -f api.log
-
