@@ -222,11 +222,55 @@ def _native_xgb_contributions(model, X, labels):
     }
 
 
+def _status_from_habitability(habitability_index: float | None):
+    if habitability_index is None:
+        return "unknown"
+    if habitability_index >= 0.7:
+        return "habitable"
+    if habitability_index >= 0.3:
+        return "marginal"
+    return "inhospitable"
+
+
+def metadata_only_explanation(planet_name=None, error: str | None = None):
+    try:
+        planet_info = get_planet_info(planet_name) if planet_name else {}
+    except Exception as exc:
+        planet_info = {}
+        error = error or str(exc)
+
+    habitability_index = compute_habitability_index(planet_info) if planet_info else None
+    summary = narrative_summary(planet_info) if planet_info else (
+        f"There is limited publicly available data for {planet_name or 'this planet'} right now."
+    )
+
+    response = {
+        "model": "metadata-only",
+        "dataset_source": "planet_knowledge",
+        "predicted_label": _status_from_habitability(habitability_index),
+        "confidence": None,
+        "top_features": {},
+        "habitability_index": habitability_index,
+        "planet_info": planet_info,
+        "summary": summary,
+        "reason": (
+            "Returned a metadata-only analysis because the trained model was unavailable "
+            "or could not explain this planet."
+        ),
+    }
+    if error:
+        response["error"] = error
+    return response
+
+
 # =========================================================
 # 🧠 EXPLANATION
 # =========================================================
 def explain_prediction(features, planet_name=None):
-    model, meta = load_latest_model()
+    try:
+        model, meta = load_latest_model()
+    except Exception as exc:
+        return metadata_only_explanation(planet_name=planet_name, error=str(exc))
 
     expected_n = getattr(model, "n_features_in_", len(features))
     features = (features + [0.0] * expected_n)[:expected_n]
@@ -235,8 +279,11 @@ def explain_prediction(features, planet_name=None):
     # Always force numeric
     X = np.asarray(features, dtype=np.float32).reshape(1, -1)
 
-    pred = model.predict(X)[0]
-    confidence = float(np.max(model.predict_proba(X)))
+    try:
+        pred = model.predict(X)[0]
+        confidence = float(np.max(model.predict_proba(X)))
+    except Exception as exc:
+        return metadata_only_explanation(planet_name=planet_name, error=str(exc))
 
     # =========================================================
     # 🔍 Native XGBoost contributions with quiet fallback

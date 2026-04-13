@@ -43,6 +43,14 @@ def habitability_bar(score: float):
     return f"{bar} {percent}%"
 
 
+def display_value(value, fallback="—"):
+    if value is None:
+        return fallback
+    if isinstance(value, str) and not value.strip():
+        return fallback
+    return str(value)
+
+
 def fetch_planet_catalog():
     console.print("[cyan]📡 Fetching planet catalog from backend...[/cyan]")
     try:
@@ -157,23 +165,23 @@ def display_report(data: dict, planet_info: dict):
     hi = data.get("habitability_index")
     console.print(f"🌡  [bold]Habitability Index:[/bold] {habitability_bar(hi)}")
 
-    console.print(f"📊 [bold]Predicted Class:[/bold] {data.get('predicted_label', 'Unknown')}")
-    console.print(f"🔬 [bold]Model Hash:[/bold] {data.get('model', 'Unknown')}")
+    console.print(f"📊 [bold]Predicted Class:[/bold] {display_value(data.get('predicted_label'), 'Unknown')}")
+    console.print(f"🔬 [bold]Model Hash:[/bold] {display_value(data.get('model'), 'Unknown')}")
     console.print(f"📅 [bold]Timestamp:[/bold] {datetime.now().isoformat()}")
 
     console.rule("[magenta]Physical Characteristics[/magenta]")
     info_table = Table(show_header=False, box=None)
-    info_table.add_row("Mass (Earth)", str(planet_info.get("mass_earth", "—")))
-    info_table.add_row("Radius (Earth)", str(planet_info.get("radius", "—")))
-    info_table.add_row("Temperature (K)", str(planet_info.get("temperature", "—")))
-    info_table.add_row("Distance (pc)", str(planet_info.get("distance_pc", "—")))
-    info_table.add_row("Distance (ly)", str(planet_info.get("distance_ly", "—")))
-    info_table.add_row("Discovery Year", str(planet_info.get("discovery_year", "—")))
-    info_table.add_row("Discovery Method", str(planet_info.get("discovery_method", "—")))
-    info_table.add_row("Host Star", str(planet_info.get("host_star", "—")))
-    info_table.add_row("Source", str(planet_info.get("source", "—")))
-    info_table.add_row("Source Family", str(planet_info.get("source_family", "—")))
-    info_table.add_row("Proximity", str(planet_info.get("proximity_category", "—")))
+    info_table.add_row("Mass (Earth)", display_value(planet_info.get("mass_earth")))
+    info_table.add_row("Radius (Earth)", display_value(planet_info.get("radius")))
+    info_table.add_row("Temperature (K)", display_value(planet_info.get("temperature")))
+    info_table.add_row("Distance (pc)", display_value(planet_info.get("distance_pc")))
+    info_table.add_row("Distance (ly)", display_value(planet_info.get("distance_ly")))
+    info_table.add_row("Discovery Year", display_value(planet_info.get("discovery_year")))
+    info_table.add_row("Discovery Method", display_value(planet_info.get("discovery_method")))
+    info_table.add_row("Host Star", display_value(planet_info.get("host_star")))
+    info_table.add_row("Source", display_value(planet_info.get("source")))
+    info_table.add_row("Source Family", display_value(planet_info.get("source_family")))
+    info_table.add_row("Proximity", display_value(planet_info.get("proximity_category")))
     console.print(info_table)
 
     habitability_signals = planet_info.get("habitability_signals") or []
