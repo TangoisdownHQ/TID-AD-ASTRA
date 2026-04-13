@@ -27,6 +27,13 @@ SOURCE_LABELS = {
     "astroml_exoplanets.csv": "AstroML Exoplanet Dataset",
 }
 
+SOURCE_FAMILIES = {
+    "nasa_exoplanets.csv": "exoplanet_catalog",
+    "open_exoplanet_catalogue.csv": "exoplanet_catalog",
+    "koi_fallback.csv": "exoplanet_catalog",
+    "astroml_exoplanets.csv": "stellar_enrichment",
+}
+
 COLUMN_ALIASES = {
     "planet_name": ["pl_name", "name", "kepoi_name", "planet_name"],
     "host_star": ["hostname", "host_star", "star_name"],
@@ -56,6 +63,7 @@ def load_planet_data():
                 df.columns = [c.strip().lower() for c in df.columns]
                 df["_source_file"] = path.name
                 df["_source"] = SOURCE_LABELS.get(path.name, path.name)
+                df["_source_family"] = SOURCE_FAMILIES.get(path.name, "exoplanet_catalog")
                 dfs.append(df)
             except Exception as e:
                 print(f"⚠️ Failed to load planet metadata from {path}: {e}")
@@ -201,6 +209,7 @@ def get_planet_catalog_records(limit: int | None = None):
                 "planet_type": infer_planet_type(radius),
                 "water_likelihood": infer_water_likelihood(temperature),
                 "source": _json_safe_scalar(row.get("_source")),
+                "source_family": _json_safe_scalar(row.get("_source_family")),
             }
         )
 
@@ -246,6 +255,7 @@ def search_planets(query: str, limit: int = 10):
             "discovery_year": _value_from_row(row, "discovery_year"),
             "discovery_method": _value_from_row(row, "discovery_method"),
             "source": row.get("_source"),
+            "source_family": row.get("_source_family"),
         })
 
     return results
@@ -304,6 +314,7 @@ def get_planet_info(planet_name: str):
         "water_likelihood": infer_water_likelihood(temp),
         "moons": "unknown (exomoons are extremely hard to detect with current technology)",
         "source": _json_safe_scalar(row.get("_source")),
+        "source_family": _json_safe_scalar(row.get("_source_family")),
     }
 
 

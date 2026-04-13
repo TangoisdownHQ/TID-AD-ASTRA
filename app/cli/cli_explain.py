@@ -21,6 +21,7 @@ API_CHAT = "http://127.0.0.1:8080/chat/ask"
 API_DATASET_UPLOAD = "http://127.0.0.1:8080/datasets/upload"
 API_DATASET_LIST = "http://127.0.0.1:8080/datasets/uploads"
 API_DATASET_PREVIEW = "http://127.0.0.1:8080/datasets/preview"
+API_SMALL_BODY_LOOKUP = "http://127.0.0.1:8080/small-bodies/lookup"
 DEFAULT_FEATURES = [0.2,1.1,0.9,365,1,0.05,10,50,0,89,288,4.5,2015,12.3,1,1,0,5778,4.6]
 
 # =========================================================
@@ -121,6 +122,14 @@ def upload_dataset_file(path: str):
 
     if resp.status_code != 200:
         console.print(f"[red]❌ Upload failed:[/red] {resp.status_code} — {resp.text}")
+        return None
+    return resp.json()
+
+
+def lookup_small_body(query: str):
+    resp = requests.get(API_SMALL_BODY_LOOKUP, params={"query": query}, timeout=45)
+    if resp.status_code != 200:
+        console.print(f"[red]❌ Small-body lookup failed:[/red] {resp.status_code} — {resp.text}")
         return None
     return resp.json()
 
@@ -347,6 +356,30 @@ def render_dataset_preview(payload: dict):
     console.print(table)
 
 
+def render_small_body(payload: dict):
+    summary = (payload or {}).get("summary") or {}
+    if not summary:
+        console.print("[yellow]No small-body data available.[/yellow]")
+        return
+
+    console.rule("[bold cyan]Small-Body Lookup[/bold cyan]")
+    table = Table(show_header=False, box=None)
+    table.add_row("Object", str(summary.get("object_name", "—")))
+    table.add_row("Designation", str(summary.get("designation", "—")))
+    table.add_row("Orbit Class", str(summary.get("orbit_class", "—")))
+    table.add_row("NEO", str(summary.get("is_neo", "—")))
+    table.add_row("PHA", str(summary.get("is_pha", "—")))
+    table.add_row("Period (days)", str(summary.get("period_days", "—")))
+    table.add_row("Perihelion (au)", str(summary.get("perihelion_au", "—")))
+    table.add_row("Aphelion (au)", str(summary.get("aphelion_au", "—")))
+    table.add_row("Inclination (deg)", str(summary.get("inclination_deg", "—")))
+    table.add_row("Absolute Magnitude", str(summary.get("absolute_magnitude", "—")))
+    table.add_row("Rotation Period", str(summary.get("rotation_period_hours", "—")))
+    table.add_row("Source", str(summary.get("source", "—")))
+    console.print(table)
+    console.rule()
+
+
 def run_upload_mode():
     path = questionary.text("Enter the path to a CSV file to upload:").ask()
     if not path:
@@ -383,6 +416,15 @@ def run_uploaded_dataset_browser():
         sorted_payload = preview_uploaded_dataset(filename, sort_by=sort_by, ascending=ascending)
         if sorted_payload:
             render_dataset_preview(sorted_payload)
+
+
+def run_small_body_mode():
+    query = questionary.text("Enter asteroid/comet/small-body name or designation:").ask()
+    if not query:
+        return
+    payload = lookup_small_body(query)
+    if payload:
+        render_small_body(payload)
 
 
 def run_chat_mode():
@@ -430,13 +472,22 @@ def main():
     while True:
         mode = questionary.select(
             "Choose a mission mode:",
-            choices=["Analyze planet", "Chat with catalog", "Upload custom dataset", "Browse uploaded datasets", "Exit"],
+            choices=[
+                "Analyze planet",
+                "Chat with catalog",
+                "Lookup small body",
+                "Upload custom dataset",
+                "Browse uploaded datasets",
+                "Exit",
+            ],
         ).ask()
 
         if mode == "Analyze planet":
             run_analysis_mode(planets)
         elif mode == "Chat with catalog":
             run_chat_mode()
+        elif mode == "Lookup small body":
+            run_small_body_mode()
         elif mode == "Upload custom dataset":
             run_upload_mode()
         elif mode == "Browse uploaded datasets":

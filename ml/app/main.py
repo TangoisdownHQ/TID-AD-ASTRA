@@ -10,7 +10,7 @@ import joblib
 # =========================================================
 # 🧩 INTERNAL IMPORTS
 # =========================================================
-from app.routes import chat, datasets, models, system, planets
+from app.routes import chat, datasets, models, small_bodies, system, planets
 from app.models.classifier import predict, train_model
 from app.schemas import PredictRequest, TrainResponse
 from app.system.auto_retrain import auto_retrain
@@ -102,13 +102,14 @@ def make_prediction(req: PredictRequest):
 # 📦 ROUTE INCLUSION
 # =========================================================
 from app.routes import models as models_routes
-from app.routes import chat, datasets, system, planets
+from app.routes import chat, datasets, small_bodies, system, planets
 
 app.include_router(models.router, prefix="/models", tags=["models"])   # ✅ enables /models/explain
 app.include_router(system.router, prefix="/system", tags=["system"])
 app.include_router(planets.router, prefix="/planets", tags=["planets"])
 app.include_router(chat.router, prefix="/chat", tags=["chat"])
 app.include_router(datasets.router, prefix="/datasets", tags=["datasets"])
+app.include_router(small_bodies.router, prefix="/small-bodies", tags=["small-bodies"])
 
 
 # =========================================================

@@ -24,12 +24,19 @@ The current build merges local and refreshable data from:
 - AstroML exoplanet dataset
 - NASA KOI fallback data
 
+In this project:
+
+- `exoplanets` are planets around other stars
+- `small bodies` are Solar System objects such as asteroids and comets
+- `space objects` is the broad umbrella term for planets, moons, asteroids, comets, and similar bodies
+
 ## Repo Layout
 
 - `ml/app/main.py`: FastAPI app
 - `ml/app/routes/planets.py`: planet catalog and metadata endpoints
 - `ml/app/routes/chat.py`: natural-language catalog chat
 - `ml/app/routes/datasets.py`: custom dataset upload and preview endpoints
+- `ml/app/routes/small_bodies.py`: JPL small-body lookup for asteroids and comets
 - `ml/app/system/planet_knowledge.py`: source merging and habitability helpers
 - `ml/app/system/update_datasets.py`: dataset refresh utility
 - `app/cli/cli_explain.py`: interactive CLI interface
@@ -65,6 +72,7 @@ make cli-explain
 
 - `Analyze planet` for the original select-and-report flow
 - `Chat with catalog` for natural-language search, compare, and planet lookup
+- `Lookup small body` for separate Solar System object queries
 - `Upload custom dataset` to send a CSV to the backend
 - `Browse uploaded datasets` to preview and sort uploaded CSV files
 
@@ -74,6 +82,7 @@ make cli-explain
 curl http://127.0.0.1:8080/planets/all?limit=5
 curl "http://127.0.0.1:8080/planets/info?name=Kepler-442b"
 curl "http://127.0.0.1:8080/planets/search?query=kepler"
+curl "http://127.0.0.1:8080/small-bodies/lookup?query=Eros"
 curl -X POST http://127.0.0.1:8080/chat/ask \
   -H "Content-Type: application/json" \
   -d '{"message":"compare TOI-700 e vs Kepler-1649 b","limit":5}'
@@ -146,6 +155,7 @@ Uploaded CSVs are stored in `ml/app/data/uploads/` and are also picked up by the
 | Open Exoplanet Catalogue | Community-maintained supplemental planet records |
 | AstroML dataset | Additional exoplanet tabular reference data |
 | NASA KOI fallback | Local fallback when richer catalogs are unavailable |
+| JPL Small-Body Database API | Separate Solar System asteroid/comet lookup |
 
 ## What Changed For Multi-Source Support
 
@@ -157,6 +167,8 @@ Uploaded CSVs are stored in `ml/app/data/uploads/` and are also picked up by the
 - The CLI now includes a chat mode that can answer catalog questions and then jump into full planet analysis.
 - Chat sessions now support follow-up context, result references like `tell me about the second result`, and pagination with `next`, `prev`, or `page 2`.
 - Optional OpenAI-enhanced answers can be enabled from the CLI when `OPENAI_API_KEY` is configured.
+- `/small-bodies/lookup` adds a separate JPL-backed mode for asteroids and comets.
+- Exoplanets and Solar System objects are now treated as separate source families.
 
 ## Optional OpenAI Answer Layer
 
@@ -183,6 +195,12 @@ Recommended design:
 - keep exoplanets and Solar System bodies as separate source families
 - use Gaia and MAST as enrichment layers, not replacements for the planet catalog
 - keep uploaded user CSVs isolated from curated source files so provenance stays clear
+
+Current implementation status:
+
+- implemented now: exoplanet catalog family and separate JPL small-body family
+- next enrichment target: Gaia host-star enrichment on exoplanet records
+- next mission target: MAST/Kepler/TESS enrichment for observational context and candidates
 
 ## GitHub Push Checklist
 
