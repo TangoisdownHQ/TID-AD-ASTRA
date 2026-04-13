@@ -60,6 +60,12 @@ pip install -r requirements.txt
 make run-api
 ```
 
+Or launch both backend and CLI together:
+
+```bash
+make run
+```
+
 On first run, if no local model artifact exists yet, the backend trains a starter model automatically before serving explainability features.
 
 4. In a second terminal, launch the CLI:
@@ -129,6 +135,43 @@ cd ml
 .venv/bin/python -m app.models.classifier --train ml/app/data/koi_fallback.csv
 ```
 
+## When To Retrain
+
+You do not need to retrain every time you start the app.
+
+Retrain when:
+
+- you pulled new code that changes model logic or feature handling
+- you refreshed datasets and want the model to reflect the latest catalog
+- you uploaded your own CSV files and want those files included in training
+- explainability responses are falling back to `metadata-only` and you want model-backed feature importance again
+- you see model-version drift warnings and want a fresh artifact built in your current environment
+
+You usually do not need to retrain when:
+
+- you only want to browse planets, chat with the catalog, or inspect metadata
+- the current model is loading correctly and explanations are already working
+- you only restarted the API with no code or dataset changes
+
+Why retraining helps:
+
+- it rebuilds the local model artifact in your own environment
+- it updates the registry used by `/models/explain`
+- it reduces stale-model issues after dependency or dataset changes
+- it improves the chance that feature-importance output is available instead of a fallback response
+
+Recommended retrain flow:
+
+```bash
+cd ml
+source .venv/bin/activate
+python -m app.models.classifier --train app/data/koi_fallback.csv
+cd ..
+make run
+```
+
+If you want a fresh backend after retraining, restart the app so the API loads the newest artifact.
+
 ## Custom Dataset Uploads
 
 Users can upload their own CSV files and sort through them from the CLI.
@@ -150,14 +193,11 @@ Uploaded CSVs are stored in `ml/app/data/uploads/` and are also picked up by the
 
 ## 🌐 External Data Sources
 
-| Source | Purpose |
-|--------|---------|
-| NASA Exoplanet Archive | Primary exoplanet parameters and discovery metadata |
-| Open Exoplanet Catalogue | Community-maintained supplemental planet records |
-| AstroML dataset | Additional exoplanet tabular reference data |
-| NASA KOI fallback | Local fallback when richer catalogs are unavailable |
-| MAST exoplanet and Gaia services | Optional live enrichment for host-star context, Gaia crossmatch, and mission metadata |
-| JPL Small-Body Database API | Separate Solar System asteroid/comet lookup |
+| Source | Endpoint | Rows | Status |
+|--------|-----------|------|--------|
+| **NASA Exoplanet Archive** | `https://exoplanetarchive.ipac.caltech.edu/TAP/sync?query=select+top+5000+*+from+pscomppars&format=csv` | 5000 | ✅ Updated |
+| **Open Exoplanet Catalogue** | `https://raw.githubusercontent.com/OpenExoplanetCatalogue/oec_tables/master/comma_separated/open_exoplanet_catalogue.csv` | — | ⚠️ Failed |
+| **AstroML Exoplanet Dataset** | `https://raw.githubusercontent.com/astroML/astroML-data/main/datasets/exoplanets.csv` | — | ⚠️ Failed |
 
 ## What Changed For Multi-Source Support
 
@@ -212,6 +252,19 @@ Primary enrichment sources:
 - ESA Gaia Archive and Gaia user services: https://www.cosmos.esa.int/web/gaia-users/register
 - MAST mission archives and APIs: https://archive.stsci.edu/ and https://mast.stsci.edu/api/v0/
 - JPL Small-Body Database API: https://ssd-api.jpl.nasa.gov/doc/cad.html
+
+## Troubleshooting
+
+If you retrained but still see old responses:
+
+- stop the old backend first with `make stop`
+- restart with `make run` or `make run-api`
+- make sure your request URLs are quoted in `zsh` when they include `?`
+
+If a planet still does not show model-backed output:
+
+- the metadata layer may still have useful information even when the trained model cannot explain that planet
+- in that case the app should return a `metadata-only` explanation instead of a blank result
 
 ## GitHub Push Checklist
 
