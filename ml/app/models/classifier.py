@@ -21,6 +21,49 @@ from app.system.planet_knowledge import (
 )
 from app.models.utils import load_latest_model, get_feature_names
 
+
+FALLBACK_KOI_FEATURES = [
+    "koi_period",
+    "koi_period_err1",
+    "koi_period_err2",
+    "koi_time0bk",
+    "koi_time0bk_err1",
+    "koi_time0bk_err2",
+    "koi_impact",
+    "koi_impact_err1",
+    "koi_impact_err2",
+    "koi_duration",
+    "koi_depth",
+    "koi_prad",
+    "koi_teq",
+    "koi_model_snr",
+    "koi_steff",
+    "koi_slogg",
+    "koi_srad",
+    "koi_kepmag",
+]
+
+FEATURE_DESCRIPTIONS = {
+    "koi_period": "Orbital period in days. This tells how long the planet takes to orbit its star.",
+    "koi_period_err1": "Upper uncertainty on orbital period. Larger uncertainty means the measured orbit is less precise.",
+    "koi_period_err2": "Lower uncertainty on orbital period. This is another bound on how uncertain the orbital period is.",
+    "koi_time0bk": "Reference transit time. This marks when a measured transit occurred.",
+    "koi_time0bk_err1": "Upper uncertainty on the transit-timing reference point.",
+    "koi_time0bk_err2": "Lower uncertainty on the transit-timing reference point.",
+    "koi_impact": "Transit impact parameter. It indicates how centrally the planet crosses the face of its star.",
+    "koi_impact_err1": "Upper uncertainty on the transit impact parameter.",
+    "koi_impact_err2": "Lower uncertainty on the transit impact parameter.",
+    "koi_duration": "Transit duration in hours. Longer or shorter crossings help characterize the orbit.",
+    "koi_depth": "Transit depth in parts per million. Deeper transits usually indicate a larger planet relative to the star.",
+    "koi_prad": "Planet radius in Earth radii.",
+    "koi_teq": "Estimated equilibrium temperature in Kelvin, based on stellar heating rather than a directly measured surface temperature.",
+    "koi_model_snr": "Signal-to-noise ratio of the transit detection. Higher values usually mean a cleaner, more reliable signal.",
+    "koi_steff": "Host star effective temperature in Kelvin.",
+    "koi_slogg": "Host star surface gravity on a logarithmic scale.",
+    "koi_srad": "Host star radius in solar radii.",
+    "koi_kepmag": "Kepler-band brightness of the host star. Lower values mean a brighter star.",
+}
+
 # =========================================================
 # 🧾 Logging Setup
 # =========================================================
@@ -105,7 +148,7 @@ def train_model():
 
     else:
         df, X_train, X_test, y_train, y_test, scaler, source_type, dataset_path = load_kepler_dataset()
-        update_awareness_state(feature_names=list(range(X_train.shape[1])))
+        update_awareness_state(feature_names=_derive_feature_names_from_dataframe(df))
 
     update_awareness_state(
         last_trained_dataset=str(dataset_path),
@@ -197,6 +240,8 @@ def predict(features):
 
 def _feature_labels(count: int):
     feature_names = get_feature_names() or []
+    if _feature_names_are_generic(feature_names):
+        feature_names = FALLBACK_KOI_FEATURES
     labels = []
     for i in range(count):
         if i < len(feature_names):
@@ -205,6 +250,60 @@ def _feature_labels(count: int):
         else:
             labels.append(f"feature_{i}")
     return labels
+
+
+def _feature_names_are_generic(feature_names) -> bool:
+    if not feature_names:
+        return True
+    normalized = [str(item).strip().lower() for item in feature_names]
+    return all(name.isdigit() or name.startswith("feature_") for name in normalized)
+
+
+def _derive_feature_names_from_dataframe(df: pd.DataFrame) -> list[str]:
+    working = df.copy()
+    working.columns = [c.strip() for c in working.columns]
+    working = working.replace([np.inf, -np.inf], np.nan)
+    working = working.dropna(axis=1, how="all")
+
+    label_col = None
+    if "koi_disposition" in working.columns:
+        label_col = "koi_disposition"
+    elif "koi_pdisposition" in working.columns:
+        label_col = "koi_pdisposition"
+
+    feature_names = []
+    for col in working.columns:
+        if col == label_col:
+            continue
+        coerced = pd.to_numeric(working[col], errors="coerce")
+        if coerced.notna().sum() > 0:
+            feature_names.append(col)
+
+    feature_names = [col for col in feature_names if col not in {"kepid", "ra", "dec"}]
+    X = working[feature_names].apply(pd.to_numeric, errors="coerce")
+    X = X.replace([np.inf, -np.inf], np.nan)
+    X = X.fillna(X.median(numeric_only=True))
+    X = X.loc[:, X.nunique() > 1]
+    return list(X.columns)
+
+
+def describe_feature(feature_name: str) -> dict:
+    label = str(feature_name)
+    description = FEATURE_DESCRIPTIONS.get(label)
+    if description:
+        return {"label": label, "description": description}
+    return {
+        "label": label,
+        "description": "This is one of the numeric inputs used by the classifier. Its importance shows relative influence on this prediction, not a direct percentage.",
+    }
+
+
+def describe_predicted_class(predicted_label) -> str:
+    if predicted_label in (1, "1"):
+        return "Class 1 is the model's positive class. In this training setup it means the object looks more like a real planet candidate or confirmed planet than a false positive."
+    if predicted_label in (0, "0"):
+        return "Class 0 is the model's negative class. In this training setup it means the object looks more like a false positive than a validated planet signal."
+    return "The class is the model's category label. It is not itself a habitability grade."
 
 
 def _native_xgb_contributions(model, X, labels):
@@ -333,8 +432,10 @@ def explain_prediction(features, planet_name=None):
         "model": meta.get("hash"),
         "dataset_source": meta.get("dataset_source"),
         "predicted_label": int(pred),
+        "predicted_class_explanation": describe_predicted_class(int(pred)),
         "confidence": confidence,
         "top_features": top_features,
+        "top_feature_details": [describe_feature(name) for name in top_features.keys()],
         "habitability_index": habitability_index,
         "planet_info": planet_info,
         "summary": summary,

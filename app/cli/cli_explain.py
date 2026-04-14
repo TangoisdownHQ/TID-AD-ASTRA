@@ -90,10 +90,19 @@ def send_request(planet: str, features: list):
     return resp.json()
 
 
-def send_chat_request(message: str, limit: int = 5, session_id: str | None = None, use_openai: bool = False, page: int | None = None):
+def send_chat_request(
+    message: str,
+    limit: int = 5,
+    session_id: str | None = None,
+    use_openai: bool = False,
+    page: int | None = None,
+    active_planet: str | None = None,
+):
     payload = {"message": message, "limit": limit, "session_id": session_id, "use_openai": use_openai}
     if page is not None:
         payload["page"] = page
+    if active_planet:
+        payload["active_planet"] = active_planet
     resp = requests.post(API_CHAT, json=payload, timeout=45)
     if resp.status_code != 200:
         console.print(f"[red]❌ Chat API Error:[/red] {resp.status_code} — {resp.text}")
@@ -166,6 +175,8 @@ def display_report(data: dict, planet_info: dict):
     console.print(f"🌡  [bold]Habitability Index:[/bold] {habitability_bar(hi)}")
 
     console.print(f"📊 [bold]Predicted Class:[/bold] {display_value(data.get('predicted_label'), 'Unknown')}")
+    if data.get("predicted_class_explanation"):
+        console.print(f"    [dim]{data['predicted_class_explanation']}[/dim]")
     console.print(f"🔬 [bold]Model Hash:[/bold] {display_value(data.get('model'), 'Unknown')}")
     console.print(f"📅 [bold]Timestamp:[/bold] {datetime.now().isoformat()}")
 
@@ -276,17 +287,23 @@ def display_report(data: dict, planet_info: dict):
     console.rule("[magenta]Feature Influence[/magenta]")
     table = Table(show_header=True, header_style="bold magenta")
     table.add_column("Feature")
+    table.add_column("Meaning")
     table.add_column("Importance", justify="right")
 
     top_features = data.get("top_features") or {}
+    feature_details = {
+        item.get("label"): item.get("description")
+        for item in (data.get("top_feature_details") or [])
+        if item.get("label")
+    }
     if not top_features:
-        table.add_row("N/A", "No feature data available")
+        table.add_row("N/A", "No feature data available", "—")
     else:
         for k, v in top_features.items():
             try:
-                table.add_row(k, f"{float(v):.5f}")
+                table.add_row(k, feature_details.get(k, "—"), f"{float(v):.5f}")
             except Exception:
-                table.add_row(k, "N/A")
+                table.add_row(k, feature_details.get(k, "—"), "N/A")
 
     console.print(table)
 
@@ -355,17 +372,19 @@ def render_compare_result(payload: dict):
 
 def maybe_analyze_from_results(results: list[dict]):
     if not results:
-        return
+        return None
     if not questionary.confirm("Analyze one of these planets now?").ask():
-        return
+        return None
 
     choices = [row["planet_name"] for row in results[:10] if row.get("planet_name")]
     if not choices:
-        return
+        return None
 
     planet = questionary.select("Select a planet to analyze:", choices=choices).ask()
     if planet:
         analyze_planet(planet)
+        return planet
+    return None
 
 
 def handle_chat_response(payload: dict):
@@ -382,19 +401,22 @@ def handle_chat_response(payload: dict):
                     f"[cyan]Page {payload.get('page', 1)} of {payload.get('total_pages')} "
                     f"({payload.get('total_matches', len(results))} matches).[/cyan]"
                 )
-            maybe_analyze_from_results(results)
+            chosen_planet = maybe_analyze_from_results(results)
+            if chosen_planet:
+                return chosen_planet
         if openai_note:
             console.print(f"[yellow]OpenAI fallback note:[/yellow] {openai_note}")
-        return
+        return None
 
-    if intent == "info":
+    if intent in {"info", "explain"}:
         if payload.get("answer_openai"):
             payload = dict(payload)
             payload["answer"] = payload["answer_openai"]
         render_info_result(payload)
         if openai_note:
             console.print(f"[yellow]OpenAI fallback note:[/yellow] {openai_note}")
-        return
+        planet = payload.get("planet") or {}
+        return planet.get("planet_name")
 
     if intent == "compare":
         if payload.get("answer_openai"):
@@ -403,12 +425,13 @@ def handle_chat_response(payload: dict):
         render_compare_result(payload)
         if openai_note:
             console.print(f"[yellow]OpenAI fallback note:[/yellow] {openai_note}")
-        return
+        return None
 
     console.print(f"[yellow]{answer}[/yellow]")
 
     if openai_note:
         console.print(f"[yellow]OpenAI fallback note:[/yellow] {openai_note}")
+    return None
 
 
 def analyze_planet(planet: str):
@@ -544,6 +567,7 @@ def run_chat_mode():
         "Use OpenAI-enhanced answers when OPENAI_API_KEY is configured?"
     ).ask()
     session_id = None
+    active_planet = None
 
     while True:
         prompt = questionary.text("Mission chat").ask()
@@ -554,9 +578,14 @@ def run_chat_mode():
         if cleaned.lower() in {"exit", "quit", "back"}:
             return
 
-        payload = send_chat_request(cleaned, session_id=session_id, use_openai=bool(use_openai))
+        payload = send_chat_request(
+            cleaned,
+            session_id=session_id,
+            use_openai=bool(use_openai),
+            active_planet=active_planet,
+        )
         session_id = payload.get("session_id", session_id)
-        handle_chat_response(payload)
+        active_planet = handle_chat_response(payload) or active_planet
         console.print()
 
 

@@ -30,6 +30,29 @@ ORDINAL_WORDS = {
     "ninth": 9,
     "tenth": 10,
 }
+EXPLANATION_KEYWORDS = {
+    "feature",
+    "features",
+    "importance",
+    "important",
+    "class",
+    "confidence",
+    "index",
+    "habitability index",
+    "temperature",
+    "kelvin",
+    "parsec",
+    "parsecs",
+    "light-year",
+    "light years",
+    "meaning",
+    "mean",
+    "means",
+    "star family",
+    "star class",
+    "spectral",
+    "source family",
+}
 
 
 def _extract_limit(message: str, default: int) -> int:
@@ -177,6 +200,157 @@ def _intent_for_message(message: str, planet_mentions: list[str]) -> str:
     return "search"
 
 
+def _is_explanation_question(message: str) -> bool:
+    lowered = message.lower()
+    return any(keyword in lowered for keyword in EXPLANATION_KEYWORDS)
+
+
+def _habitability_index_explanation(score) -> str:
+    if score is None:
+        return "The habitability index is unavailable for this record."
+    if score >= 0.7:
+        band = "high"
+    elif score >= 0.3:
+        band = "moderate"
+    else:
+        band = "low"
+    return (
+        f"The habitability index is a heuristic score from 0 to 1 built from radius, temperature, orbital period, and host-star temperature. "
+        f"{score:.2f} falls in the {band} range, so it suggests potentially favorable conditions but not proof of life."
+    )
+
+
+def _temperature_explanation(info: dict) -> str:
+    temp = info.get("temperature")
+    if temp is None:
+        return "Temperature data is missing for this planet."
+    celsius = temp - 273.15
+    return (
+        f"The listed temperature is {temp:.1f} K, which is about {celsius:.1f} C. "
+        "Here it is an equilibrium estimate based on incoming starlight, so it is a rough climate clue rather than a measured ground temperature."
+    )
+
+
+def _distance_explanation(info: dict) -> str:
+    pc = info.get("distance_pc")
+    ly = info.get("distance_ly")
+    if pc is None and ly is None:
+        return "Distance data is missing for this planet."
+    if pc is not None and ly is not None:
+        return f"The distance is {pc:.3f} parsecs, or about {ly:.1f} light-years. One parsec is about 3.26 light-years."
+    if pc is not None:
+        return f"The distance is {pc:.3f} parsecs. One parsec is about 3.26 light-years."
+    return f"The distance is about {ly:.1f} light-years."
+
+
+def _star_family_explanation(info: dict) -> str:
+    spectral_type = info.get("spectral_type")
+    star_temp = info.get("star_temp")
+    if spectral_type:
+        return f"The host star family or class is given by its spectral type: {spectral_type}."
+    if star_temp is not None:
+        return (
+            f"No explicit spectral class is stored here, but the host star temperature is {star_temp:.0f} K. "
+            "Astronomers use temperature together with spectra to group stars into families such as M, K, G, F, A, B, and O."
+        )
+    return "No star family or spectral class is available for this planet in the current dataset."
+
+
+def _feature_explanation(analysis: dict) -> str:
+    details = analysis.get("top_feature_details") or []
+    raw = analysis.get("top_features") or {}
+    if not raw:
+        return "Feature importance shows which model inputs influenced this prediction most, but this result does not include feature-importance data."
+    parts = [
+        "Feature importance ranks which inputs pushed the model most strongly for this prediction. The numbers are relative influence scores, not percentages."
+    ]
+    for detail in details[:3]:
+        parts.append(f"{detail.get('label')}: {detail.get('description')}")
+    return " ".join(parts)
+
+
+def _confidence_explanation(analysis: dict) -> str:
+    confidence = analysis.get("confidence")
+    if confidence is None:
+        return "Confidence is unavailable for this result."
+    return (
+        f"The confidence score is {confidence:.2f}. That means the classifier strongly prefers this predicted class over its alternatives, "
+        "but it is still model confidence, not certainty about real-world habitability or life."
+    )
+
+
+def _class_explanation(analysis: dict) -> str:
+    predicted_label = analysis.get("predicted_label")
+    explanation = analysis.get("predicted_class_explanation")
+    if predicted_label is None:
+        return "The model did not return a class label."
+    return f"The predicted class is {predicted_label}. {explanation or ''}".strip()
+
+
+def _source_family_explanation(info: dict) -> str:
+    source_family = info.get("source_family")
+    source = info.get("source")
+    if source_family:
+        return f"Source family `{source_family}` means this record came from the broader data category behind the source, here `{source}`."
+    if source:
+        return f"The source is `{source}`, but there is no separate source-family label stored for this record."
+    return "There is no source-family label stored for this record."
+
+
+def _build_explanation_answer(message: str, session_id: str, session: dict):
+    active_planet = session.get("active_planet")
+    if not active_planet:
+        return {
+            "intent": "explain",
+            "session_id": session_id,
+            "answer": "Ask about a specific planet first, or analyze one from the current results, then I can explain what the fields mean.",
+        }
+
+    info = session.get("last_planet_info")
+    analysis = session.get("last_analysis")
+    if not info or (info.get("planet_name") or "").lower() != active_planet.lower():
+        info = enrich_planet_info(get_planet_info(active_planet), include_external=True)
+    if not analysis:
+        analysis = _safe_explain(active_planet)
+
+    lowered = message.lower()
+    requested = []
+    if "feature" in lowered or "importance" in lowered:
+        requested.append(_feature_explanation(analysis))
+    if "class" in lowered:
+        requested.append(_class_explanation(analysis))
+    if "confidence" in lowered:
+        requested.append(_confidence_explanation(analysis))
+    if "index" in lowered or "habitability index" in lowered:
+        requested.append(_habitability_index_explanation(analysis.get("habitability_index")))
+    if "temperature" in lowered or "kelvin" in lowered:
+        requested.append(_temperature_explanation(info))
+    if "parsec" in lowered or "parsecs" in lowered or "light-year" in lowered or "light years" in lowered:
+        requested.append(_distance_explanation(info))
+    if "star family" in lowered or "star class" in lowered or "spectral" in lowered:
+        requested.append(_star_family_explanation(info))
+    if "source family" in lowered:
+        requested.append(_source_family_explanation(info))
+
+    if not requested:
+        requested = [
+            _class_explanation(analysis),
+            _confidence_explanation(analysis),
+            _habitability_index_explanation(analysis.get("habitability_index")),
+            _temperature_explanation(info),
+            _distance_explanation(info),
+            _feature_explanation(analysis),
+        ]
+
+    return {
+        "intent": "explain",
+        "session_id": session_id,
+        "answer": f"For {active_planet}: " + " ".join(part for part in requested if part),
+        "planet": info,
+        "analysis": analysis,
+    }
+
+
 def _safe_explain(planet_name: str):
     try:
         return explain_prediction([], planet_name=planet_name)
@@ -283,7 +457,7 @@ def _build_search_answer(message: str, records: list[dict], limit: int, session_
     return payload
 
 
-def _build_info_answer(planet_name: str, session_id: str):
+def _build_info_answer(planet_name: str, session_id: str, session: dict):
     info = get_planet_info(planet_name)
     if not info:
         return {
@@ -295,6 +469,9 @@ def _build_info_answer(planet_name: str, session_id: str):
 
     info = enrich_planet_info(info, include_external=True)
     explanation = _safe_explain(info["planet_name"])
+    session["active_planet"] = info["planet_name"]
+    session["last_planet_info"] = info
+    session["last_analysis"] = explanation
     return {
         "intent": "info",
         "session_id": session_id,
@@ -358,7 +535,7 @@ def _response_from_reference(message: str, session_id: str, session: dict):
 
     if len(selected) >= 2 or "compare" in message:
         return _build_compare_answer(selected[0], selected[1], session_id)
-    return _build_info_answer(selected[0], session_id)
+    return _build_info_answer(selected[0], session_id, session)
 
 
 def _apply_openai_if_requested(req: ChatRequest, payload: dict, session: dict):
@@ -380,6 +557,8 @@ def _apply_openai_if_requested(req: ChatRequest, payload: dict, session: dict):
 def ask_chat(req: ChatRequest):
     message = req.message.strip()
     session_id, session = _session_for(req.session_id)
+    if req.active_planet:
+        session["active_planet"] = req.active_planet
 
     if not message:
         payload = {
@@ -393,6 +572,8 @@ def ask_chat(req: ChatRequest):
     lowered = message.lower()
     planet_mentions = _collect_mentioned_planets(message, records)
     intent = _intent_for_message(lowered, planet_mentions)
+    if intent == "search" and _is_explanation_question(lowered) and session.get("active_planet"):
+        intent = "explain"
     limit = _extract_limit(lowered, req.limit)
 
     if intent == "paginate":
@@ -410,6 +591,10 @@ def ask_chat(req: ChatRequest):
 
     if intent == "reference":
         payload = _response_from_reference(lowered, session_id, session)
+        return _apply_openai_if_requested(req, payload, session)
+
+    if intent == "explain":
+        payload = _build_explanation_answer(lowered, session_id, session)
         return _apply_openai_if_requested(req, payload, session)
 
     if intent == "compare":
@@ -434,7 +619,7 @@ def ask_chat(req: ChatRequest):
 
     if intent == "info":
         if planet_mentions:
-            payload = _build_info_answer(planet_mentions[0], session_id)
+            payload = _build_info_answer(planet_mentions[0], session_id, session)
         else:
             payload = {
                 "intent": "info",

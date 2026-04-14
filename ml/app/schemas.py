@@ -16,3 +16,4 @@ class ChatRequest(BaseModel):
     session_id: Optional[str] = None
     page: Optional[int] = None
     use_openai: bool = False
+    active_planet: Optional[str] = None
