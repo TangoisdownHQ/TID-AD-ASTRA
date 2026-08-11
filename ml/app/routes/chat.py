@@ -8,6 +8,7 @@ from app.models.classifier import explain_prediction
 from app.schemas import ChatRequest
 from app.system.enrichment import enrich_planet_info
 from app.system.openai_chat import openai_available, render_openai_answer
+from app.system import glossary
 from app.system.planet_knowledge import (
     get_planet_catalog_records,
     get_planet_info,
@@ -128,15 +129,48 @@ def _collect_mentioned_planets(message: str, records: list[dict]) -> list[str]:
     return deduped
 
 
+def _requested_status(message: str) -> str | None:
+    """
+    Work out which habitability status the user is asking for.
+
+    Negative forms are checked first on purpose: "unhabitable" and
+    "uninhabitable" both contain "habitable" as a substring, so a naive check
+    returns the *most* habitable planets for a question asking for the opposite.
+    """
+    negatives = [
+        "uninhabitable",
+        "unhabitable",
+        "not habitable",
+        "non-habitable",
+        "nonhabitable",
+        "inhospitable",
+        "hostile",
+        "unlivable",
+        "uninhabited",
+        "least habitable",
+        "worst",
+    ]
+    if any(token in message for token in negatives):
+        return "inhospitable"
+
+    if "marginal" in message or "borderline" in message:
+        return "marginal"
+
+    if any(token in message for token in ["unknown", "unclassified", "not classified", "no data"]):
+        return "unknown"
+
+    if re.search(r"\bhabitable\b", message) or "livable" in message or "life" in message:
+        return "habitable"
+
+    return None
+
+
 def _filter_records(message: str, records: list[dict]):
     filtered = records[:]
 
-    if any(token in message for token in ["status habitable", "only habitable", "habitable planets"]):
-        filtered = [r for r in filtered if r.get("status") == "habitable"]
-    elif "marginal" in message:
-        filtered = [r for r in filtered if r.get("status") == "marginal"]
-    elif "inhospitable" in message:
-        filtered = [r for r in filtered if r.get("status") == "inhospitable"]
+    requested_status = _requested_status(message)
+    if requested_status:
+        filtered = [r for r in filtered if r.get("status") == requested_status]
 
     if "rocky" in message or "earth-like" in message:
         filtered = [r for r in filtered if "rocky" in (r.get("planet_type") or "")]
@@ -175,7 +209,20 @@ def _sort_records(message: str, records: list[dict]) -> list[dict]:
         return sorted(records, key=lambda r: (r.get("distance_ly") is None, r.get("distance_ly") or 10**9))
     if "latest" in message or "newest" in message or "recent" in message:
         return sorted(records, key=lambda r: (r.get("discovery_year") is None, -(r.get("discovery_year") or 0)))
-    return sorted(records, key=lambda r: r.get("habitability_score") or 0, reverse=True)
+    # When the question is about hostile worlds, "best match" means lowest score.
+    if _requested_status(message) == "inhospitable":
+        return sorted(
+            records,
+            key=lambda r: (r.get("status") == "unknown", r.get("habitability_score") or 0),
+        )
+
+    # Otherwise match the catalog ordering: classified planets outrank
+    # unclassifiable ones, then by score.
+    return sorted(
+        records,
+        key=lambda r: (r.get("status") != "unknown", r.get("habitability_score") or 0),
+        reverse=True,
+    )
 
 
 def _intent_for_message(message: str, planet_mentions: list[str]) -> str:
@@ -205,19 +252,39 @@ def _is_explanation_question(message: str) -> bool:
     return any(keyword in lowered for keyword in EXPLANATION_KEYWORDS)
 
 
-def _habitability_index_explanation(score) -> str:
+def _habitability_index_explanation(score, analysis: dict | None = None) -> str:
+    analysis = analysis or {}
     if score is None:
-        return "The habitability index is unavailable for this record."
+        missing = analysis.get("habitability_missing") or []
+        detail = f" Missing inputs: {', '.join(missing)}." if missing else ""
+        return (
+            "There is not enough measured data to score this planet's habitability. "
+            "That is different from scoring badly — it means the measurements are absent."
+            + detail
+        )
+
+    coverage = analysis.get("habitability_coverage")
     if score >= 0.7:
         band = "high"
     elif score >= 0.3:
         band = "moderate"
     else:
         band = "low"
-    return (
-        f"The habitability index is a heuristic score from 0 to 1 built from radius, temperature, orbital period, and host-star temperature. "
-        f"{score:.2f} falls in the {band} range, so it suggests potentially favorable conditions but not proof of life."
+
+    text = (
+        "The habitability index is a heuristic score from 0 to 1, a weighted average over the "
+        "factors actually measured for a planet: radius (30%), equilibrium temperature (40%), "
+        "orbital period (20%), and host-star temperature (10%). "
+        f"{score:.2f} falls in the {band} range, so it suggests potentially favorable conditions "
+        "but not proof of life."
     )
+    if coverage is not None:
+        text += f" This score is based on {int(coverage * 100)}% of the weighting being measured."
+    factors = analysis.get("habitability_factors") or []
+    if factors:
+        parts = [f"{f['label']} scored {f['score']:.2f}" for f in factors[:3]]
+        text += " Breakdown: " + "; ".join(parts) + "."
+    return text
 
 
 def _temperature_explanation(info: dict) -> str:
@@ -273,10 +340,22 @@ def _confidence_explanation(analysis: dict) -> str:
     confidence = analysis.get("confidence")
     if confidence is None:
         return "Confidence is unavailable for this result."
-    return (
-        f"The confidence score is {confidence:.2f}. That means the classifier strongly prefers this predicted class over its alternatives, "
-        "but it is still model confidence, not certainty about real-world habitability or life."
+
+    text = (
+        f"The confidence score is {confidence:.2f}. It is the classifier's certainty that this "
+        "signal is a genuine planet detection rather than a false positive — not a statement "
+        "about habitability."
     )
+    inputs = analysis.get("model_inputs") or {}
+    if inputs.get("quality") == "not planet-specific":
+        text += (
+            " Treat it with caution here: most of the model's decision weight came from "
+            "training-set medians rather than this planet's own measurements, so the number "
+            "is close to what the model returns for any catalog entry."
+        )
+    elif inputs.get("basis"):
+        text += f" Basis: {inputs['basis']}."
+    return text
 
 
 def _class_explanation(analysis: dict) -> str:
@@ -322,7 +401,7 @@ def _build_explanation_answer(message: str, session_id: str, session: dict):
     if "confidence" in lowered:
         requested.append(_confidence_explanation(analysis))
     if "index" in lowered or "habitability index" in lowered:
-        requested.append(_habitability_index_explanation(analysis.get("habitability_index")))
+        requested.append(_habitability_index_explanation(analysis.get("habitability_index"), analysis))
     if "temperature" in lowered or "kelvin" in lowered:
         requested.append(_temperature_explanation(info))
     if "parsec" in lowered or "parsecs" in lowered or "light-year" in lowered or "light years" in lowered:
@@ -333,10 +412,23 @@ def _build_explanation_answer(message: str, session_id: str, session: dict):
         requested.append(_source_family_explanation(info))
 
     if not requested:
+        # Fall back to the glossary before dumping every explanation at the user.
+        terms = glossary.find_terms(lowered)
+        for key in terms:
+            spec = glossary.describe(key)
+            if not spec:
+                continue
+            text = f"{spec['label']}: {spec['definition']}"
+            planet_value = _format_term_value(spec, info)
+            if planet_value:
+                text += f" {planet_value}"
+            requested.append(text)
+
+    if not requested:
         requested = [
             _class_explanation(analysis),
             _confidence_explanation(analysis),
-            _habitability_index_explanation(analysis.get("habitability_index")),
+            _habitability_index_explanation(analysis.get("habitability_index"), analysis),
             _temperature_explanation(info),
             _distance_explanation(info),
             _feature_explanation(analysis),
@@ -348,6 +440,67 @@ def _build_explanation_answer(message: str, session_id: str, session: dict):
         "answer": f"For {active_planet}: " + " ".join(part for part in requested if part),
         "planet": info,
         "analysis": analysis,
+    }
+
+
+def _format_term_value(spec: dict, info: dict):
+    """Render the active planet's value for a glossary term, when it has one."""
+    field = spec.get("planet_field")
+    if not field or not info:
+        return None
+    value = info.get(field)
+    if value is None:
+        return f"{info.get('planet_name', 'This planet')} has no measured value for this."
+
+    if isinstance(value, float):
+        rendered = f"{value:,.4g}"
+    else:
+        rendered = str(value)
+
+    unit = spec.get("unit")
+    if unit and unit not in {None, "0 to 1", "0 = circular", "0 = dead centre, 1 = grazing", "percent"}:
+        rendered = f"{rendered} {unit}"
+
+    return f"For {info.get('planet_name', 'this planet')} it is {rendered}."
+
+
+def _build_glossary_answer(message: str, session_id: str, session: dict, terms: list[str]):
+    info = session.get("last_planet_info") or {}
+    active_planet = session.get("active_planet")
+
+    parts = []
+    described = []
+    for key in terms:
+        spec = glossary.describe(key)
+        if not spec:
+            continue
+        planet_value = _format_term_value(spec, info) if active_planet else None
+        spec["planet_value"] = planet_value
+        described.append(spec)
+
+        text = f"{spec['label']}: {spec['definition']}"
+        if planet_value:
+            text += f" {planet_value}"
+        parts.append(text)
+
+    if not parts:
+        return {
+            "intent": "glossary",
+            "session_id": session_id,
+            "answer": (
+                "I do not have a definition for that yet. I can explain terms like "
+                + ", ".join(glossary.all_terms()[:8])
+                + ", and others shown in planet reports."
+            ),
+            "terms": [],
+        }
+
+    return {
+        "intent": "glossary",
+        "session_id": session_id,
+        "answer": "\n\n".join(parts),
+        "terms": described,
+        "active_planet": active_planet,
     }
 
 
@@ -444,10 +597,19 @@ def _build_search_answer(message: str, records: list[dict], limit: int, session_
         }
 
     payload = _build_page_payload(session_id, session, page=1)
+    requested_status = _requested_status(message)
     if "nearby" in message or "closest" in message or "nearest" in message:
         opener = "Closest matching planets"
     elif "latest" in message or "newest" in message or "recent" in message:
         opener = "Most recent matching discoveries"
+    elif requested_status == "inhospitable":
+        opener = "Least habitable planets on record"
+    elif requested_status == "habitable":
+        opener = "Most habitable planets on record"
+    elif requested_status == "marginal":
+        opener = "Marginally habitable planets"
+    elif requested_status == "unknown":
+        opener = "Planets with too little data to classify"
     else:
         opener = "Best matching planets"
     payload["answer"] = (
@@ -572,9 +734,30 @@ def ask_chat(req: ChatRequest):
     lowered = message.lower()
     planet_mentions = _collect_mentioned_planets(message, records)
     intent = _intent_for_message(lowered, planet_mentions)
-    if intent == "search" and _is_explanation_question(lowered) and session.get("active_planet"):
-        intent = "explain"
+
+    # "what does transit depth mean" is a definition question, not a planet search.
+    glossary_terms = glossary.find_terms(lowered)
+    definition_question = glossary.is_definition_question(lowered)
+    # "which planets are ..." asks for a list even when it mentions a known term,
+    # so a request that looks like a catalog query never becomes a definition lookup.
+    wants_a_list = re.search(
+        r"\b(planets?|worlds?|show|list|find|top|nearby|closest|nearest|within|discovered|orbiting)\b",
+        lowered,
+    )
+
+    if intent == "search" and not planet_mentions and not wants_a_list:
+        # A planet in context gets the richer planet-specific explanation for terms
+        # that have one; everything else falls through to the glossary.
+        if _is_explanation_question(lowered) and session.get("active_planet"):
+            intent = "explain"
+        elif definition_question or glossary_terms:
+            intent = "glossary"
+
     limit = _extract_limit(lowered, req.limit)
+
+    if intent == "glossary":
+        payload = _build_glossary_answer(lowered, session_id, session, glossary_terms)
+        return _apply_openai_if_requested(req, payload, session)
 
     if intent == "paginate":
         page = req.page

@@ -1,93 +1,42 @@
-import requests
-import pandas as pd
-from pathlib import Path
-from datetime import datetime
-from app.system.selfaware import update_awareness_state
+"""
+Fetch agent.
 
-DATA_DIR = Path(__file__).resolve().parents[1] / "data"
-DATA_DIR.mkdir(parents=True, exist_ok=True)
+This module used to hold a second, independent set of downloaders that wrote the
+same files as `app.system.update_datasets` with a different column schema — so
+whichever ran last decided what the catalog looked like. It now delegates to the
+single refresh implementation instead.
+"""
 
-NASA_TAP_URL = "https://exoplanetarchive.ipac.caltech.edu/TAP/sync"
-OPEN_EXOPLANET_URL = "https://raw.githubusercontent.com/OpenExoplanetCatalogue/oec_tables/master/comma_separated/open_exoplanet_catalogue.csv"
-ASTROML_URL = "https://raw.githubusercontent.com/astroML/astroML-data/main/datasets/exoplanets.csv"
+from app.system.update_datasets import (
+    DATA_REFRESH_INTERVAL_HOURS,
+    NASA_URL,
+    OEC_URL,
+    main as refresh_datasets,
+    refresh_if_stale,
+)
 
-
-def fetch_nasa_exoplanets(limit=5000) -> Path:
-    """Fetch NASA Exoplanet Archive (TAP) data."""
-    query = (
-        "select top {limit} pl_name,hostname,pl_eqt,pl_rade,pl_orbper,pl_orbsmax,"
-        "pl_orbeccen,sy_dist,disc_year,discoverymethod,st_teff,st_rad,st_spectype "
-        "from pscomppars"
-    ).format(limit=limit)
-    params = {"query": query, "format": "csv"}
-    path = DATA_DIR / "nasa_exoplanets.csv"
-
-    print("🌐 Fetching exoplanets from NASA Exoplanet Archive...")
-    try:
-        r = requests.get(NASA_TAP_URL, params=params, timeout=20)
-        r.raise_for_status()
-        with open(path, "wb") as f:
-            f.write(r.content)
-        print(f"✅ NASA dataset saved to {path}")
-        update_awareness_state(last_fetch_source="NASA TAP", last_fetch_time=datetime.now().isoformat())
-        return path
-    except Exception as e:
-        print(f"❌ Failed to fetch NASA TAP exoplanets: {e}")
-        return None
+__all__ = [
+    "NASA_URL",
+    "OEC_URL",
+    "refresh_datasets",
+    "run_all_fetchers",
+]
 
 
-def fetch_open_exoplanet_catalogue() -> Path:
-    """Fetch Open Exoplanet Catalogue (community source)."""
-    path = DATA_DIR / "open_exoplanet_catalogue.csv"
-    print("🌐 Fetching data from Open Exoplanet Catalogue...")
+def run_all_fetchers(force: bool = False):
+    """
+    Refresh local catalog files.
 
-    try:
-        r = requests.get(OPEN_EXOPLANET_URL, timeout=20)
-        r.raise_for_status()
-        # The repo now provides CSV-like text; save directly
-        with open(path, "wb") as f:
-            f.write(r.content)
-        print(f"✅ Open Exoplanet Catalogue saved to {path}")
-        update_awareness_state(last_fetch_source="Open Exoplanet Catalogue", last_fetch_time=datetime.now().isoformat())
-        return path
-    except Exception as e:
-        print(f"❌ Failed to fetch Open Exoplanet Catalogue: {e}")
-        return None
-
-
-def fetch_astroml_exoplanets() -> Path:
-    """Fetch AstroML dataset (CSV format)."""
-    path = DATA_DIR / "astroml_exoplanets.csv"
-    print("🌐 Fetching AstroML Exoplanet dataset...")
-
-    try:
-        r = requests.get(ASTROML_URL, timeout=20)
-        r.raise_for_status()
-        with open(path, "wb") as f:
-            f.write(r.content)
-        print(f"✅ AstroML dataset saved to {path}")
-        update_awareness_state(last_fetch_source="AstroML", last_fetch_time=datetime.now().isoformat())
-        return path
-    except Exception as e:
-        print(f"❌ Failed to fetch AstroML dataset: {e}")
-        return None
-
-
-def run_all_fetchers():
-    """Run all fetchers sequentially."""
+    By default this is a no-op when the local cache is still inside the refresh
+    window, so it is safe to call on startup alongside the scheduler.
+    """
     print("🧠 Running dataset fetch cycle...")
 
-    nasa_path = fetch_nasa_exoplanets()
-    oec_path = fetch_open_exoplanet_catalogue()
-    astro_path = fetch_astroml_exoplanets()
-
-    fetched = [p for p in [nasa_path, oec_path, astro_path] if p is not None]
-    if fetched:
-        update_awareness_state(
-            last_successful_fetch=datetime.now().isoformat(),
-            fetched_files=[str(f) for f in fetched],
-        )
+    if force:
+        refresh_datasets()
+        refreshed = True
     else:
-        print("⚠️ All fetch attempts failed — fallback dataset will remain active.")
+        refreshed = refresh_if_stale(max_age_hours=DATA_REFRESH_INTERVAL_HOURS)
 
     print("🚀 Fetch cycle complete.")
+    return refreshed

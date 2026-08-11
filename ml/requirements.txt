@@ -15,3 +15,7 @@ astroquery==0.4.7
 requests==2.32.3
 python-multipart==0.0.9
 
+# CLI (app/cli/cli_explain.py imports these at module scope)
+rich==13.8.1
+questionary==2.0.1
+

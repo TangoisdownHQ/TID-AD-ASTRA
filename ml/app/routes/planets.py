@@ -7,10 +7,11 @@ from fastapi import APIRouter, HTTPException, Query
 from app.system.planet_knowledge import (
     get_planet_catalog_records,
     get_planet_info,
-    load_planet_data,
+    list_planet_names,
     search_planets,
 )
 from app.system.enrichment import enrich_planet_info
+from app.system.update_datasets import NASA_URL
 
 router = APIRouter()
 
@@ -22,13 +23,9 @@ PLANET_DATA_PATHS = [
     DATA_DIR / "nasa_exoplanets.csv",
     DATA_DIR / "open_exoplanet_catalogue.csv",
     DATA_DIR / "koi_fallback.csv",
-    DATA_DIR / "astroml_exoplanets.csv",
 ]
 
-NASA_DATA_URL = (
-    "https://exoplanetarchive.ipac.caltech.edu/TAP/sync?"
-    "query=select+pl_name,pl_eqt,pl_rade,pl_orbsmax,pl_orbeccen,sy_dist,disc_year,discoverymethod+from+ps&format=csv"
-)
+NASA_DATA_URL = NASA_URL
 
 
 # =========================================================
@@ -92,23 +89,7 @@ async def planet_info(
             raise HTTPException(status_code=404, detail=f"Planet '{name}' not found in database.")
         return sanitize_for_json(enrich_planet_info(info, include_external=include_external))
 
-    planets = []
-    df = load_planet_data()
-    if not df.empty:
-        name_col = next(
-            (c for c in ["pl_name", "name", "kepoi_name", "planet_name"] if c in df.columns),
-            None,
-        )
-        if name_col:
-            unique_names = (
-                df[name_col]
-                .dropna()
-                .astype(str)
-                .drop_duplicates()
-                .sort_values()
-                .tolist()
-            )
-            planets = [{"name": name} for name in unique_names[:250]]
+    planets = [{"name": name} for name in list_planet_names(limit=250)]
 
     if not planets:
         raise HTTPException(status_code=500, detail="No planet data available.")
@@ -141,10 +122,6 @@ async def planet_all(limit: int = Query(100, description="Number of planets to r
     if not combined:
         raise HTTPException(status_code=500, detail="Failed to load planet data from local sources.")
 
-    safe_combined = sanitize_for_json(combined)
-
-    combined_sorted = sorted(
-        safe_combined, key=lambda x: (x["habitability_score"] or 0), reverse=True
-    )
-
-    return combined_sorted[:limit]
+    # Already ranked by the knowledge layer (classified planets first, then score);
+    # re-sorting here on score alone would promote single-factor guesses.
+    return sanitize_for_json(combined[:limit])
