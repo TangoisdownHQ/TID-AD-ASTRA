@@ -19,10 +19,49 @@ TID-AD-ASTRA lets users browse planet records, inspect habitability-oriented met
 
 The current build merges local and refreshable data from:
 
-- NASA Exoplanet Archive
-- Open Exoplanet Catalogue
-- AstroML exoplanet dataset
-- NASA KOI fallback data
+- NASA Exoplanet Archive `pscomppars` — confirmed planets (refreshed live)
+- NASA Kepler KOI `cumulative` — Kepler candidates and dispositions (refreshed live)
+- NASA TESS `toi` — the active discovery pipeline (refreshed live)
+- Open Exoplanet Catalogue — community catalog (refreshed live)
+- NASA Kepler KOI — bundled offline fallback
+
+Rows that are not planets — KOI/TOI false positives, retracted candidates, and
+Solar System bodies listed by the OEC — are filtered out at load time. Everything
+that survives carries a `disposition` of `confirmed`, `candidate`, or
+`controversial`, so an unvetted candidate is never presented as a confirmed planet.
+
+## How To Read The Numbers
+
+The tool reports two independent quantities. They answer different questions and
+should not be conflated.
+
+**Habitability index** — a heuristic 0-1 score, a weighted average over the
+factors actually measured for a planet: equilibrium temperature (40%), radius
+(30%), orbital period (20%), host-star temperature (10%). Every report shows the
+per-factor breakdown, the Earth reference each factor is compared against, and
+what fraction of the weighting was measured. When under half the weighting is
+available the status is `unknown` rather than a guess — a planet nobody has
+measured is not the same as a planet measured to be hostile.
+
+**Detection model** — an XGBoost classifier answering "does this transit signal
+look like a real planet rather than a false positive?". It says nothing about
+habitability. Reports state how many of the model's inputs came from the planet's
+own measurements versus training-set medians, weighted by how much the model
+actually relies on each, and label the result `planet-specific`,
+`partly planet-specific`, or `not planet-specific`. Features shown in the
+influence table are marked `measured` or `imputed` for the same reason.
+
+Where NASA publishes its own vetting confidence for an object (`koi_score`), that
+is shown too — it varies per object and is independent of this project's model.
+
+Model training notes:
+
+- trained on the live KOI `cumulative` table (9,564 rows, ~50/50 planet vs false positive)
+- `koi_score` and the `koi_fpflag_*` columns are excluded — they encode the label,
+  and training on them produced a meaningless ~99% accuracy
+- training uses only features the serving catalog can supply, so predictions are
+  driven by the planet rather than by imputed medians
+- current honest accuracy is ~0.85
 
 In this project:
 
@@ -195,16 +234,27 @@ Uploaded CSVs are stored in `ml/app/data/uploads/` and are also picked up by the
 
 | Source | Endpoint | Rows | Status |
 |--------|-----------|------|--------|
-| **NASA Exoplanet Archive** | `https://exoplanetarchive.ipac.caltech.edu/TAP/sync?query=select+top+5000+*+from+pscomppars&format=csv` | 5000 | ✅ Updated |
-| **Open Exoplanet Catalogue** | `https://raw.githubusercontent.com/OpenExoplanetCatalogue/oec_tables/master/comma_separated/open_exoplanet_catalogue.csv` | — | ⚠️ Failed |
-| **AstroML Exoplanet Dataset** | `https://raw.githubusercontent.com/astroML/astroML-data/main/datasets/exoplanets.csv` | — | ⚠️ Failed |
+| **NASA Exoplanet Archive (confirmed)** | `https://exoplanetarchive.ipac.caltech.edu/TAP/sync?query=select+pl_name,hostname,pl_bmasse,pl_rade,pl_eqt,pl_orbper,pl_orbsmax,pl_orbeccen,sy_dist,disc_year,discoverymethod,disc_facility,st_teff,st_rad,st_mass,st_spectype,ra,dec+from+pscomppars&format=csv` | 6336 | ✅ Updated |
+| **NASA Kepler KOI (cumulative)** | `https://exoplanetarchive.ipac.caltech.edu/TAP/sync?query=select+kepoi_name,kepler_name,koi_disposition,koi_pdisposition,koi_score,koi_period,koi_prad,koi_teq,koi_insol,koi_duration,koi_depth,koi_impact,koi_model_snr,koi_steff,koi_srad,koi_smass,koi_slogg,koi_kepmag,ra,dec+from+cumulative&format=csv` | 9564 | ✅ Updated |
+| **NASA TESS Objects of Interest** | `https://exoplanetarchive.ipac.caltech.edu/TAP/sync?query=select+toi,toipfx,tid,tfopwg_disp,pl_orbper,pl_rade,pl_eqt,pl_insol,pl_trandurh,pl_trandep,st_dist,st_teff,st_rad,st_logg,st_tmag,ra,dec,toi_created+from+toi&format=csv` | 8113 | ✅ Updated |
+| **Open Exoplanet Catalogue** | `https://raw.githubusercontent.com/OpenExoplanetCatalogue/oec_tables/master/comma_separated/open_exoplanet_catalogue.txt` | 5414 | ✅ Updated |
+| **NASA Kepler KOI (offline fallback)** | `ml/app/data/koi_fallback.csv` | 2935 | 📦 Bundled |
 
 ## What Changed For Multi-Source Support
 
-- The backend now merges NASA, OEC, KOI, and AstroML files through one metadata layer.
-- `/planets/all` returns de-duplicated records across sources instead of reading only one dataset.
-- `/planets/info` and `/planets/search` now understand both NASA-style and OEC-style column names.
-- Dataset refresh now includes AstroML alongside NASA and OEC.
+- The backend merges NASA, OEC, and KOI files through one metadata layer.
+- Each source resolves its own planet-name column into a canonical name at load
+  time, so records are reachable no matter which column their catalog uses.
+- Every alternate designation is indexed: `K00752.01`, `Kepler-227 b`, and
+  `kepler 227b` all resolve to the same planet.
+- `/planets/info` merges fields across sources — NASA supplies what it has, the
+  remaining gaps are filled from OEC and KOI — and reports which source gave each
+  value in `field_sources`.
+- `/planets/all` returns de-duplicated records, preferring confirmed planets and
+  then the most complete row, and lists every source that knows each planet.
+- Parsed catalogs are cached and invalidated on dataset refresh.
+- The AstroML source has been removed: the file it pointed at does not exist in
+  that repository, so it never contributed a row.
 - `/chat/ask` adds deterministic natural-language search, info, compare, and ranking over the catalog.
 - The CLI now includes a chat mode that can answer catalog questions and then jump into full planet analysis.
 - Chat sessions now support follow-up context, result references like `tell me about the second result`, and pagination with `next`, `prev`, or `page 2`.

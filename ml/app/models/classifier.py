@@ -17,9 +17,15 @@ from sklearn.model_selection import train_test_split
 from app.system.planet_knowledge import (
     get_planet_info,
     compute_habitability_index,
+    compute_habitability_profile,
     narrative_summary,
 )
 from app.models.utils import load_latest_model, get_feature_names
+from app.models.features import (
+    build_feature_vector,
+    model_gain_weights,
+    summarize_provenance,
+)
 
 
 FALLBACK_KOI_FEATURES = [
@@ -57,6 +63,7 @@ FEATURE_DESCRIPTIONS = {
     "koi_depth": "Transit depth in parts per million. Deeper transits usually indicate a larger planet relative to the star.",
     "koi_prad": "Planet radius in Earth radii.",
     "koi_teq": "Estimated equilibrium temperature in Kelvin, based on stellar heating rather than a directly measured surface temperature.",
+    "koi_insol": "Starlight received relative to Earth. A value of 1 means the planet gets about as much energy as Earth does.",
     "koi_model_snr": "Signal-to-noise ratio of the transit detection. Higher values usually mean a cleaner, more reliable signal.",
     "koi_steff": "Host star effective temperature in Kelvin.",
     "koi_slogg": "Host star surface gravity on a logarithmic scale.",
@@ -149,6 +156,19 @@ def train_model():
     else:
         df, X_train, X_test, y_train, y_test, scaler, source_type, dataset_path = load_kepler_dataset()
         update_awareness_state(feature_names=_derive_feature_names_from_dataframe(df))
+
+    # Record the exact feature space the model was fitted on. The medians are what
+    # inference falls back to for inputs a planet record cannot supply, so they
+    # have to come from the same frame the model saw.
+    if hasattr(X_train, "columns"):
+        update_awareness_state(
+            feature_names=[str(c) for c in X_train.columns],
+            feature_medians={
+                str(column): float(value)
+                for column, value in X_train.median(numeric_only=True).items()
+                if pd.notna(value)
+            },
+        )
 
     update_awareness_state(
         last_trained_dataset=str(dataset_path),
@@ -300,10 +320,26 @@ def describe_feature(feature_name: str) -> dict:
 
 def describe_predicted_class(predicted_label) -> str:
     if predicted_label in (1, "1"):
-        return "Class 1 is the model's positive class. In this training setup it means the object looks more like a real planet candidate or confirmed planet than a false positive."
+        return (
+            "Class 1 means the transit signal looks like a real planet detection rather "
+            "than a false positive. It says nothing about habitability. Note that the "
+            "catalog already excludes vetted false positives, so almost everything you "
+            "can browse here scores class 1 — a high score confirms the detection is "
+            "sound, it does not distinguish one planet from another."
+        )
     if predicted_label in (0, "0"):
-        return "Class 0 is the model's negative class. In this training setup it means the object looks more like a false positive than a validated planet signal."
+        return (
+            "Class 0 means the signal resembles a false positive — an eclipsing binary or "
+            "instrumental artefact rather than a planet. This is unusual for a catalog "
+            "entry and worth treating as a data-quality flag."
+        )
     return "The class is the model's category label. It is not itself a habitability grade."
+
+
+PREDICTION_CAVEAT = (
+    "This classifier answers 'is this a genuine detection?', not 'is this habitable?'. "
+    "Use the habitability breakdown for the second question."
+)
 
 
 def _native_xgb_contributions(model, X, labels):
@@ -321,16 +357,6 @@ def _native_xgb_contributions(model, X, labels):
     }
 
 
-def _status_from_habitability(habitability_index: float | None):
-    if habitability_index is None:
-        return "unknown"
-    if habitability_index >= 0.7:
-        return "habitable"
-    if habitability_index >= 0.3:
-        return "marginal"
-    return "inhospitable"
-
-
 def metadata_only_explanation(planet_name=None, error: str | None = None):
     try:
         planet_info = get_planet_info(planet_name) if planet_name else {}
@@ -338,7 +364,8 @@ def metadata_only_explanation(planet_name=None, error: str | None = None):
         planet_info = {}
         error = error or str(exc)
 
-    habitability_index = compute_habitability_index(planet_info) if planet_info else None
+    profile = compute_habitability_profile(planet_info)
+    habitability_index = profile["score"]
     summary = narrative_summary(planet_info) if planet_info else (
         f"There is limited publicly available data for {planet_name or 'this planet'} right now."
     )
@@ -346,10 +373,21 @@ def metadata_only_explanation(planet_name=None, error: str | None = None):
     response = {
         "model": "metadata-only",
         "dataset_source": "planet_knowledge",
-        "predicted_label": _status_from_habitability(habitability_index),
+        "predicted_label": profile["status"],
         "confidence": None,
         "top_features": {},
         "habitability_index": habitability_index,
+        "habitability_coverage": profile["coverage"],
+        "habitability_status": profile["status"],
+        "habitability_factors": profile["factors"],
+        "habitability_explanation": profile["explanation"],
+        "model_inputs": {
+            "inputs_total": 0,
+            "inputs_from_planet": 0,
+            "planet_features": [],
+            "coverage": 0.0,
+            "basis": "no trained model was available, so this is catalog metadata only",
+        },
         "planet_info": planet_info,
         "summary": summary,
         "reason": (
@@ -371,9 +409,31 @@ def explain_prediction(features, planet_name=None):
     except Exception as exc:
         return metadata_only_explanation(planet_name=planet_name, error=str(exc))
 
-    expected_n = getattr(model, "n_features_in_", len(features))
-    features = (features + [0.0] * expected_n)[:expected_n]
+    expected_n = getattr(model, "n_features_in_", len(features or []))
     labels = _feature_labels(expected_n)
+
+    # =========================================================
+    # 🌍 Planet knowledge layer (needed before building inputs)
+    # =========================================================
+    try:
+        planet_info = get_planet_info(planet_name) if planet_name else {}
+    except Exception as e:
+        log_event(f"⚠️ Planet info lookup failed: {e}")
+        planet_info = {}
+
+    # Build the model input from the planet itself. Callers may still pass an
+    # explicit vector, but an empty or padded one would make every planet look
+    # identical to the model, so the catalog record takes precedence.
+    if features:
+        features = (list(features) + [0.0] * expected_n)[:expected_n]
+        provenance = [
+            {"feature": label, "value": value, "origin": "caller", "catalog_field": None}
+            for label, value in zip(labels, features)
+        ]
+    else:
+        features, provenance = build_feature_vector(planet_info, labels)
+
+    input_summary = summarize_provenance(provenance, model_gain_weights(model, labels))
 
     # Always force numeric
     X = np.asarray(features, dtype=np.float32).reshape(1, -1)
@@ -409,22 +469,25 @@ def explain_prediction(features, planet_name=None):
             top_features = {}
 
     # =========================================================
-    # 🌍 Planet knowledge layer
+    # 🌍 Habitability + narrative
     # =========================================================
-    try:
-        planet_info = get_planet_info(planet_name) if planet_name else {}
-    except Exception as e:
-        log_event(f"⚠️ Planet info lookup failed: {e}")
-        planet_info = {}
-
-    habitability_index = compute_habitability_index(planet_info)
+    profile = compute_habitability_profile(planet_info)
+    habitability_index = profile["score"]
     narrative = narrative_summary(planet_info)
+
+    habitability_text = (
+        f"Habitability index: {habitability_index:.2f} "
+        f"({int(profile['coverage'] * 100)}% of inputs measured). "
+        if habitability_index is not None
+        else "Habitability index: not enough measured data to score. "
+    )
 
     summary = (
         f"{planet_name or 'This planet'} is predicted as class {int(pred)} "
-        f"with confidence {confidence:.2f}. "
+        f"with confidence {confidence:.3f}. "
         f"Top features: {', '.join(list(top_features.keys())[:3]) or 'N/A'}. "
-        f"Habitability index: {habitability_index:.2f}. "
+        f"{habitability_text}"
+        f"Prediction basis: {input_summary['basis']}. "
         f"{narrative}"
     )
 
@@ -433,10 +496,17 @@ def explain_prediction(features, planet_name=None):
         "dataset_source": meta.get("dataset_source"),
         "predicted_label": int(pred),
         "predicted_class_explanation": describe_predicted_class(int(pred)),
+        "prediction_caveat": PREDICTION_CAVEAT,
         "confidence": confidence,
         "top_features": top_features,
         "top_feature_details": [describe_feature(name) for name in top_features.keys()],
         "habitability_index": habitability_index,
+        "habitability_coverage": profile["coverage"],
+        "habitability_status": profile["status"],
+        "habitability_factors": profile["factors"],
+        "habitability_explanation": profile["explanation"],
+        "model_inputs": input_summary,
+        "model_input_details": provenance,
         "planet_info": planet_info,
         "summary": summary,
     }

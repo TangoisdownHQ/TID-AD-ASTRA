@@ -22,14 +22,60 @@ BASE_DATA_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DATA_DIR / "uploads"
 
 FALLBACK_DATASETS = [
+    BASE_DATA_DIR / "koi_cumulative.csv",
     BASE_DATA_DIR / "koi_fallback.csv",
-    BASE_DATA_DIR / "nasa_exoplanets.csv",
 ]
 
+# Training needs a labelled table. `pscomppars` has no disposition column, so the
+# previous URL downloaded 56 MB, failed the label check, and fell through to the
+# bundled CSV on every single run. `cumulative` is the table the labels come from.
 NASA_TAP_URL = (
     "https://exoplanetarchive.ipac.caltech.edu/TAP/sync"
-    "?query=select+top+5000+*+from+pscomppars&format=csv"
+    "?query=select+*+from+cumulative&format=csv"
 )
+
+# Columns that encode the vetting outcome itself. Training on these leaks the
+# label: koi_score IS the disposition confidence, and the fpflag_* columns are the
+# individual false-positive tests that produce the disposition. Including them
+# yields ~99% accuracy that means nothing.
+LEAKAGE_COLUMNS = {
+    "koi_score",
+    "koi_fpflag_nt",
+    "koi_fpflag_ss",
+    "koi_fpflag_co",
+    "koi_fpflag_ec",
+}
+
+# Identifiers and positions carry no physical signal but correlate with survey
+# bookkeeping.
+NON_FEATURE_COLUMNS = {"kepid", "ra", "dec", "ra_err", "dec_err"}
+
+# Train on the features the serving catalog can actually supply.
+#
+# The KOI table has ~100 numeric columns, most of them measurement uncertainties
+# that no other catalog publishes. Training on all of them produces a model whose
+# decision weight sits almost entirely in columns that must be imputed at
+# inference time — the prediction then reflects the training-set median rather
+# than the planet. Restricting training to this set keeps train and serve aligned:
+# every column here maps to a catalog field via MODEL_FEATURE_SOURCES.
+TRAINING_FEATURES = [
+    "koi_period",
+    "koi_prad",
+    "koi_teq",
+    "koi_insol",
+    "koi_duration",
+    "koi_depth",
+    "koi_impact",
+    "koi_model_snr",
+    "koi_steff",
+    "koi_srad",
+    "koi_slogg",
+    "koi_kepmag",
+]
+
+# Below this many matching columns, assume a non-KOI dataset (a user upload) and
+# fall back to "every usable numeric column".
+MIN_TRAINING_FEATURE_MATCH = 6
 
 DATA_SOURCES = {
     "nasa_archive": "https://exoplanetarchive.ipac.caltech.edu/",
@@ -119,17 +165,29 @@ def _prepare_and_log(df: pd.DataFrame, dataset_path: str, dataset_source: str):
     )
 
     # 🔢 SHAP-safe numeric feature extraction
-    X = pd.DataFrame(index=df.index)
-    for col in df.columns:
-        if col == label_col:
+    excluded = LEAKAGE_COLUMNS | NON_FEATURE_COLUMNS | {label_col, "koi_pdisposition"}
+
+    available = [c for c in TRAINING_FEATURES if c in df.columns]
+    if len(available) >= MIN_TRAINING_FEATURE_MATCH:
+        candidates = available
+        print(f"🎯 Training on {len(candidates)} catalog-alignable features.")
+    else:
+        candidates = [c for c in df.columns if c not in excluded]
+        print(f"🎯 Unrecognised schema — training on {len(candidates)} numeric columns.")
+
+    columns = {}
+    for col in candidates:
+        if col in excluded:
             continue
         coerced = pd.to_numeric(df[col], errors="coerce")
         if coerced.notna().sum() > 0:
-            X[col] = coerced
+            columns[col] = coerced
 
-    for col in ["kepid", "ra", "dec"]:
-        if col in X.columns:
-            X.drop(columns=[col], inplace=True)
+    X = pd.DataFrame(columns, index=df.index)
+
+    dropped = sorted(LEAKAGE_COLUMNS & set(df.columns))
+    if dropped:
+        print(f"🛡  Excluded label-leaking columns from training: {', '.join(dropped)}")
 
     X = X.replace([np.inf, -np.inf], np.nan)
     X = X.fillna(X.median(numeric_only=True))
@@ -144,9 +202,12 @@ def _prepare_and_log(df: pd.DataFrame, dataset_path: str, dataset_source: str):
         X, y, test_size=0.2, random_state=42, stratify=y
     )
 
-    scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train)
-    X_test_scaled = scaler.transform(X_test)
+    # The scaler is fitted for callers that want it, but training and inference
+    # both use raw values. Gradient-boosted trees are scale-invariant, and the
+    # previous code trained on scaled arrays while `explain_prediction` fed raw
+    # numbers — every request landed far outside the training distribution, so
+    # the model returned effectively the same answer for every planet.
+    scaler = StandardScaler().fit(X_train)
 
     print(f"✅ Dataset ready — {len(X_train)} train / {len(X_test)} test")
     print(f"📊 Labels → confirmed/candidate={int(y.sum())} | false positives={int((y == 0).sum())}")
@@ -159,5 +220,5 @@ def _prepare_and_log(df: pd.DataFrame, dataset_path: str, dataset_source: str):
         source_links=DATA_SOURCES
     )
 
-    return df, X_train_scaled, X_test_scaled, y_train, y_test, scaler, dataset_source, dataset_path
+    return df, X_train, X_test, y_train, y_test, scaler, dataset_source, dataset_path
 

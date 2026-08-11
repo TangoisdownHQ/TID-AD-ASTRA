@@ -27,9 +27,9 @@ DEFAULT_FEATURES = [0.2,1.1,0.9,365,1,0.05,10,50,0,89,288,4.5,2015,12.3,1,1,0,57
 # =========================================================
 # 🧩 UTILITY FUNCTIONS
 # =========================================================
-def habitability_bar(score: float):
+def habitability_bar(score: float, coverage: float | None = None):
     if score is None:
-        return "⚪ Unknown"
+        return "⚪ Not enough measured data to score"
     percent = int(score * 100)
     color = "red"
     if score >= 0.7:
@@ -40,7 +40,10 @@ def habitability_bar(score: float):
     bar_length = 30
     filled = int(bar_length * score)
     bar = f"[{color}]" + "█" * filled + "[/]" + "·" * (bar_length - filled)
-    return f"{bar} {percent}%"
+    suffix = ""
+    if coverage is not None:
+        suffix = f"  [dim]({int(coverage * 100)}% of inputs measured)[/dim]"
+    return f"{bar} {percent}%{suffix}"
 
 
 def display_value(value, fallback="—"):
@@ -158,42 +161,120 @@ def lookup_small_body(query: str):
 def display_report(data: dict, planet_info: dict):
     console.rule("[bold cyan]🌌  TID-AD-ASTRA | Exoplanet Habitability Report[/bold cyan]")
 
-    status = (planet_info.get("status") or data.get("status") or "unknown").lower()
+    status = (
+        planet_info.get("status") or data.get("habitability_status") or "unknown"
+    ).lower()
     status_icon = {"habitable": "🟢", "marginal": "🟠", "inhospitable": "🔴"}.get(status, "⚪")
-    status_label = status.capitalize() if status != "unknown" else "Unknown"
+    status_label = status.capitalize() if status != "unknown" else "Not classified"
 
-    console.print(f"{status_icon}  [bold]Status:[/bold] {status_label}")
+    console.print(f"{status_icon}  [bold]Habitability status:[/bold] {status_label}")
     console.print(f"🪐 [bold]Planet:[/bold] {planet_info.get('planet_name') or 'Unknown'}")
 
+    disposition = planet_info.get("disposition")
+    if disposition:
+        badge = {
+            "confirmed": "[green]confirmed planet[/green]",
+            "candidate": "[yellow]unconfirmed candidate[/yellow]",
+            "controversial": "[yellow]disputed detection[/yellow]",
+        }.get(disposition, disposition)
+        console.print(f"🏷  [bold]Catalog status:[/bold] {badge}")
+
+    hi = data.get("habitability_index")
+    coverage = data.get("habitability_coverage", planet_info.get("habitability_coverage"))
+    console.print(f"🌡  [bold]Habitability Index:[/bold] {habitability_bar(hi, coverage)}")
+    if data.get("habitability_explanation"):
+        console.print(f"    [dim]{data['habitability_explanation']}[/dim]")
+
+    console.print(f"📅 [bold]Timestamp:[/bold] {datetime.now().isoformat()}")
+
+    # ----- Habitability breakdown: why the score is what it is -----
+    factors = data.get("habitability_factors") or planet_info.get("habitability_factors") or []
+    if factors:
+        console.rule("[magenta]Why This Habitability Score[/magenta]")
+        factor_table = Table(show_header=True, header_style="bold magenta")
+        factor_table.add_column("Factor")
+        factor_table.add_column("Measured", justify="right")
+        factor_table.add_column("Earth reference")
+        factor_table.add_column("Weight", justify="right")
+        factor_table.add_column("Factor score", justify="right")
+        for factor in factors:
+            factor_table.add_row(
+                str(factor.get("label")),
+                f"{factor.get('value')} {factor.get('unit', '')}".strip(),
+                str(factor.get("reference")),
+                f"{factor.get('weight'):.0%}",
+                f"{factor.get('score'):.2f}",
+            )
+        console.print(factor_table)
+        missing = data.get("habitability_missing") or planet_info.get("habitability_missing") or []
+        if missing:
+            console.print(f"[yellow]Not measured for this planet:[/yellow] {', '.join(missing)}")
+
+    # ----- Detection model: reported with what it can and cannot tell you -----
+    console.rule("[magenta]Detection Model[/magenta]")
+    console.print(
+        f"📊 [bold]Predicted class:[/bold] {display_value(data.get('predicted_label'), 'Unknown')}"
+    )
     confidence = data.get("confidence")
     if confidence is None:
         console.print("📈 [bold]Confidence:[/bold] ⚪ Unknown (insufficient data)")
     else:
         console.print(f"📈 [bold]Confidence:[/bold] {confidence * 100:.1f}%")
 
-    hi = data.get("habitability_index")
-    console.print(f"🌡  [bold]Habitability Index:[/bold] {habitability_bar(hi)}")
+    inputs = data.get("model_inputs") or {}
+    if inputs:
+        quality = inputs.get("quality", "unknown")
+        quality_color = {
+            "planet-specific": "green",
+            "partly planet-specific": "yellow",
+            "not planet-specific": "red",
+        }.get(quality, "white")
+        console.print(f"🧪 [bold]Input basis:[/bold] [{quality_color}]{quality}[/{quality_color}]")
+        console.print(f"    [dim]{inputs.get('basis', '')}[/dim]")
 
-    console.print(f"📊 [bold]Predicted Class:[/bold] {display_value(data.get('predicted_label'), 'Unknown')}")
+    nasa_score = planet_info.get("disposition_score")
+    if nasa_score is not None:
+        console.print(
+            f"🛰  [bold]NASA vetting score:[/bold] {float(nasa_score):.2f} "
+            "[dim](NASA's own confidence this KOI is a planet)[/dim]"
+        )
+
     if data.get("predicted_class_explanation"):
         console.print(f"    [dim]{data['predicted_class_explanation']}[/dim]")
-    console.print(f"🔬 [bold]Model Hash:[/bold] {display_value(data.get('model'), 'Unknown')}")
-    console.print(f"📅 [bold]Timestamp:[/bold] {datetime.now().isoformat()}")
+    if data.get("prediction_caveat"):
+        console.print(f"[yellow]⚠  {data['prediction_caveat']}[/yellow]")
+    console.print(f"🔬 [bold]Model hash:[/bold] {display_value(data.get('model'), 'Unknown')}")
 
     console.rule("[magenta]Physical Characteristics[/magenta]")
-    info_table = Table(show_header=False, box=None)
-    info_table.add_row("Mass (Earth)", display_value(planet_info.get("mass_earth")))
-    info_table.add_row("Radius (Earth)", display_value(planet_info.get("radius")))
-    info_table.add_row("Temperature (K)", display_value(planet_info.get("temperature")))
-    info_table.add_row("Distance (pc)", display_value(planet_info.get("distance_pc")))
-    info_table.add_row("Distance (ly)", display_value(planet_info.get("distance_ly")))
-    info_table.add_row("Discovery Year", display_value(planet_info.get("discovery_year")))
-    info_table.add_row("Discovery Method", display_value(planet_info.get("discovery_method")))
-    info_table.add_row("Host Star", display_value(planet_info.get("host_star")))
-    info_table.add_row("Source", display_value(planet_info.get("source")))
-    info_table.add_row("Source Family", display_value(planet_info.get("source_family")))
-    info_table.add_row("Proximity", display_value(planet_info.get("proximity_category")))
+    field_sources = planet_info.get("field_sources") or {}
+    info_table = Table(show_header=True, header_style="bold magenta", box=None)
+    info_table.add_column("Property")
+    info_table.add_column("Value")
+    info_table.add_column("Measured by", style="dim")
+
+    def add_row(label, key):
+        info_table.add_row(
+            label,
+            display_value(planet_info.get(key)),
+            display_value(field_sources.get(key), "—"),
+        )
+
+    add_row("Mass (Earth)", "mass_earth")
+    add_row("Radius (Earth)", "radius")
+    add_row("Temperature (K)", "temperature")
+    add_row("Distance (pc)", "distance_pc")
+    info_table.add_row("Distance (ly)", display_value(planet_info.get("distance_ly")), "—")
+    add_row("Discovery Year", "discovery_year")
+    add_row("Discovery Method", "discovery_method")
+    add_row("Host Star", "host_star")
+    info_table.add_row(
+        "Proximity", display_value(planet_info.get("proximity_category")), "—"
+    )
     console.print(info_table)
+
+    sources = planet_info.get("sources") or []
+    if sources:
+        console.print(f"[dim]Catalogs listing this planet: {', '.join(sources)}[/dim]")
 
     habitability_signals = planet_info.get("habitability_signals") or []
     if habitability_signals:
@@ -287,6 +368,7 @@ def display_report(data: dict, planet_info: dict):
     console.rule("[magenta]Feature Influence[/magenta]")
     table = Table(show_header=True, header_style="bold magenta")
     table.add_column("Feature")
+    table.add_column("Input")
     table.add_column("Meaning")
     table.add_column("Importance", justify="right")
 
@@ -296,16 +378,35 @@ def display_report(data: dict, planet_info: dict):
         for item in (data.get("top_feature_details") or [])
         if item.get("label")
     }
+    origins = {
+        item.get("feature"): item.get("origin")
+        for item in (data.get("model_input_details") or [])
+    }
+    origin_labels = {
+        "planet": "[green]measured[/green]",
+        "median": "[yellow]imputed[/yellow]",
+        "zero": "[red]missing[/red]",
+        "caller": "supplied",
+    }
+
     if not top_features:
-        table.add_row("N/A", "No feature data available", "—")
+        table.add_row("N/A", "—", "No feature data available", "—")
     else:
         for k, v in top_features.items():
+            origin = origin_labels.get(origins.get(k), "—")
             try:
-                table.add_row(k, feature_details.get(k, "—"), f"{float(v):.5f}")
+                importance = f"{float(v):.5f}"
             except Exception:
-                table.add_row(k, feature_details.get(k, "—"), "N/A")
+                importance = "N/A"
+            table.add_row(k, origin, feature_details.get(k, "—"), importance)
 
     console.print(table)
+    if any(origins.get(k) in {"median", "zero"} for k in top_features):
+        console.print(
+            "[yellow]Note:[/yellow] [dim]features marked 'imputed' were not measured for this "
+            "planet — the model used a training-set median, so their influence reflects the "
+            "dataset, not this planet.[/dim]"
+        )
 
     console.rule()
     console.print(f"[green]💡 Summary:[/green] {data.get('summary', 'No summary available.')}")
@@ -318,22 +419,42 @@ def render_search_results(results: list[dict]):
     table = Table(show_header=True, header_style="bold cyan")
     table.add_column("#", justify="right")
     table.add_column("Planet")
-    table.add_column("Status")
-    table.add_column("Habitability", justify="right")
+    table.add_column("Catalog status")
+    table.add_column("Habitability")
+    table.add_column("Score", justify="right")
     table.add_column("Distance (ly)", justify="right")
     table.add_column("Method")
-    table.add_column("Source")
+
+    status_colors = {
+        "habitable": "green",
+        "marginal": "yellow",
+        "inhospitable": "red",
+        "unknown": "dim",
+    }
+    disposition_colors = {
+        "confirmed": "green",
+        "candidate": "yellow",
+        "controversial": "yellow",
+    }
 
     for idx, row in enumerate(results, start=1):
         score = row.get("habitability_score")
+        status = str(row.get("status", "unknown"))
+        disposition = row.get("disposition") or "—"
+        coverage = row.get("habitability_coverage")
+
+        status_cell = f"[{status_colors.get(status, 'white')}]{status}[/]"
+        if status == "unknown" and coverage is not None:
+            status_cell += f" [dim]({int(coverage * 100)}% data)[/dim]"
+
         table.add_row(
             str(idx),
             str(row.get("planet_name", "Unknown")),
-            str(row.get("status", "unknown")),
+            f"[{disposition_colors.get(disposition, 'white')}]{disposition}[/]",
+            status_cell,
             f"{score:.3f}" if score is not None else "—",
             str(row.get("distance_ly", "—")),
             str(row.get("discovery_method", "—")),
-            str(row.get("source", "—")),
         )
 
     console.print(table)
@@ -404,6 +525,24 @@ def handle_chat_response(payload: dict):
             chosen_planet = maybe_analyze_from_results(results)
             if chosen_planet:
                 return chosen_planet
+        if openai_note:
+            console.print(f"[yellow]OpenAI fallback note:[/yellow] {openai_note}")
+        return None
+
+    if intent == "glossary":
+        console.rule("[bold cyan]Glossary[/bold cyan]")
+        for term in payload.get("terms") or []:
+            unit = f" [dim]({term['unit']})[/dim]" if term.get("unit") else ""
+            console.print(f"[bold]{term['label']}[/bold]{unit}")
+            console.print(f"  {term['definition']}")
+            if term.get("planet_value"):
+                console.print(f"  [cyan]{term['planet_value']}[/cyan]")
+            console.print()
+        if not payload.get("terms"):
+            console.print(f"[yellow]{answer}[/yellow]")
+        elif payload.get("active_planet"):
+            console.print(f"[dim]Values shown are for {payload['active_planet']}.[/dim]")
+        console.rule()
         if openai_note:
             console.print(f"[yellow]OpenAI fallback note:[/yellow] {openai_note}")
         return None
@@ -560,6 +699,9 @@ def run_chat_mode():
     console.print(" - tell me about Kepler-442 b")
     console.print(" - compare TOI-700 e vs Kepler-1649 b")
     console.print(" - show rocky planets within 100 ly discovered after 2020")
+    console.print(" - which planets are uninhabitable")
+    console.print(" - what is transit depth")
+    console.print(" - what does koi_duration mean")
     console.print(" - next")
     console.print(" - tell me about the second result\n")
 
